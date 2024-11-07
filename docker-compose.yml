@@ -1,0 +1,12 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      - webnet
+    ports:
+      - '8501:8501'
+networks:
+  webnet: 
+    driver: bridge
