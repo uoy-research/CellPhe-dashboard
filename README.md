@@ -9,9 +9,9 @@ It is cross-platform and runs in a web browser and doesn't require any coding ex
 
 ## Prerequisites
 
-The only prerequisite is to install Docker (or [Docker Desktop](https://www.docker.com/products/docker-desktop/)) and [Git](https://git-scm.com/) (or [GitHub Desktop](https://desktop.github.com/download/)).
+The only prerequisite is to install [Git](https://git-scm.com/) (or [GitHub Desktop](https://desktop.github.com/download/)) and optionally Docker (or [Docker Desktop](https://www.docker.com/products/docker-desktop/)) 
 
-## First use
+## Running with Docker
 
 Firstly, clone this repository:
 
@@ -24,12 +24,26 @@ This command will create a Docker image with all of the dependencies installed, 
 
 Once the above command finishes, you should able to access the app through a web browser at the address: `http://0.0.0.0:8501`.
 
-## Subsequent uses
-
 For all subsequent uses you do not need to install the dependencies again and can simply run `docker compose up`.
 
-## Caution: file system usage
+### Caution: file system usage
 
 This dashboard uses [Streamlit](https://streamlit.io/) which has some heavy dependencies. 
 As a result, the Docker image is very large (~10GB), so ensure that you have this amount of hard drive space available.
 You can always clear your Docker cache with `docker system prune`.
+
+## Running directly with Python
+
+The app can be run without Docker, although it will require setting up a suitable Python environment.
+
+Firstly, clone this repository:
+
+`git clone https://github.com/uoy-research/CellPhe-dashboard.git`
+
+Then install the Python prequisites, ideally in a [new virtual environment](https://docs.python.org/3/library/venv.html):
+
+`pip install -r requirements.txt`
+
+Then you can run the app with:
+
+`streamlit run GUI.py --server.port=8501 --server.address=0.0.0.0`
