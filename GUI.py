@@ -388,6 +388,7 @@ with tab3:
             
             if test_file is not None:
                 test_df = pd.read_csv(test_file)
+                test_df = test_df.dropna()
                 if not test_df.empty and all(col in test_df.columns for col in top_sep_df['Feature'].tolist()):
                     # Use n directly for the number of features for classification
                     # Select top n features from each dataframe for training
