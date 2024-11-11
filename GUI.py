@@ -247,17 +247,24 @@ with tab1:
 
 # Tab 2: Single Population Characterisation
 with tab2:
-    st.header("Single Population Characterisation")
+    st.header("Single Population Temporal Characterisation")
+    st.markdown("Analysis a single population's temporal characteristics, as obtained by the `cell_features()` function.")
 
     # Allow user to upload a CSV file containing cell features
-    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
-    if uploaded_file is not None:
+    if uploaded_file is None:
+        st.info("Please upload a CSV file to proceed.")
+    else:
         # Read the uploaded CSV file
         new_features_df = pd.read_csv(uploaded_file)
 
         # Ensure that the file contains valid data
-        if not new_features_df.empty and "CellID" in new_features_df.columns:
+        if new_features_df.empty or "CellID" not in new_features_df.columns:
+            st.error("Invalid file or missing 'CellID' column.")
+        elif "FrameID" not in new_features_df.columns:
+            st.error("Upload a feature set of the cells on each frame as output by the cell_features() function in CellPhe.")
+        else:
             # Store the data in session state to retain across interactions
             st.session_state['new_features_df'] = new_features_df
             
@@ -310,15 +317,10 @@ with tab2:
 
             st.pyplot(plt.gcf())
 
-        else:
-            st.error("Invalid file or missing 'CellID' column.")
-    else:
-        st.info("Please upload a CSV file to proceed.")
-
 # Tab 3: PCA & Separation Scores
 with tab3:
     st.header("PCA and Separation Scores")
-    st.write("Select the number of groups you want to analyze.")
+    st.markdown("Select the number of groups you want to analyze. They will be compared on their time-series features (as output by the `time_series_features` function in CellPhe).")
 
     # Allow user to select the number of groups
     num_groups = st.number_input("Enter the Number of Groups", min_value=2, max_value=10, value=2, step=1)
