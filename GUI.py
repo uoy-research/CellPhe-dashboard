@@ -1,3 +1,4 @@
+import time
 import os
 import pandas as pd
 import streamlit as st
@@ -293,31 +294,32 @@ with tab2:
                     st.warning("FrameID column not found in data.")
 
             with col2:
-                # Plot density plots (KDE) for the selected feature across all frames
-                frame_groups = new_features_df.groupby("FrameID")[selected_feature]
-
+                n_frames = new_features_df['FrameID'].unique().size
+                color_map = plt.cm.viridis(np.linspace(1, 0, n_frames))
                 plt.figure(figsize=(10, 6))
-                color_map = plt.cm.viridis(np.linspace(0, 1, len(frame_groups)))
-
-                # Plot KDE for each frame with the corresponding color
-                for i, (frame_id, group) in enumerate(frame_groups):
-                    sns.kdeplot(group, color=color_map[i], linewidth=2)
-
+                new_features_df['FrameID_rev'] = -1 * new_features_df['FrameID']
+                sns.kdeplot(new_features_df,
+                            x=selected_feature,
+                            hue='FrameID_rev',
+                            linewidth=1,
+                            palette=color_map,
+                            legend=False,
+                            common_norm=False
+                           )
                 plt.title(f'Density Plot of {selected_feature} by Frame')  # Changed to "Frame"
                 plt.xlabel(selected_feature)
                 plt.ylabel("Density")
 
                 # Add a color bar using the Viridis color map
-                norm = plt.Normalize(0, len(frame_groups) - 1)
+                norm = plt.Normalize(0, n_frames - 1)
                 sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
                 sm.set_array([])  # Only needed for Matplotlib 3.1 and later
 
                 # Create colorbar using the current axes
                 cbar = plt.colorbar(sm, ax=plt.gca())
-                cbar.set_ticks(np.linspace(0, len(frame_groups) - 1, 5))  # Set to fewer intervals, e.g., 5
-                cbar.set_ticklabels([int(i) for i in np.linspace(0, len(frame_groups) - 1, 5)])  # Customize tick labels
+                cbar.set_ticks(np.linspace(0, n_frames - 1, 5))  # Set to fewer intervals, e.g., 5
+                cbar.set_ticklabels([int(i) for i in np.linspace(0, n_frames - 1, 5)])  # Customize tick labels
                 cbar.set_label('Frame')  # Changed to "Frame"
-
                 st.pyplot(plt.gcf())
 
 # Tab 3: PCA & Separation Scores
