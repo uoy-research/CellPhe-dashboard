@@ -324,13 +324,21 @@ with tab3:
 
     # Allow user to select the number of groups
     num_groups = st.number_input("Enter the Number of Groups", min_value=2, max_value=10, value=2, step=1)
+    st.divider()
     dataframes = []
     labels = []
 
     # Input fields for each group
     for i in range(num_groups):
-        group_name = st.text_input(f"Enter name for Group {i+1}", f"Group {i+1}", key=f"group_name_{i}")
-        uploaded_file = st.file_uploader(f"Upload CSV File for {group_name}", type=["csv"], key=f"group_{i}")
+        label_key = f"group_name_{i}"
+        if label_key not in st.session_state:
+            group_name = ""
+        else:
+            group_name = st.session_state[label_key]
+        st.markdown(f"## Group {i+1}: {group_name}")
+        st.text_input(f"Enter name for Group {i+1}", "",
+                      key=f"group_name_{i}")
+        uploaded_file = st.file_uploader(f"Upload CSV File for Group {i+1}", type=["csv"], key=f"group_{i}")
         if uploaded_file is None:
             st.info("Please upload a CSV file to proceed.")
         else:
@@ -345,121 +353,127 @@ with tab3:
             else:
                 new_features_df = new_features_df.drop('CellID', axis=1)
                 dataframes.append(new_features_df)
-                labels.extend([group_name] * len(new_features_df))
+                labels.extend([st.session_state[f"group_name_{i}"]] * len(new_features_df))
+        st.divider()
 
     # Calculate separation scores if all dataframes are processed
     if len(dataframes) == num_groups:
-        # Calculate separation scores for all groups at once
-        sep = cellphe.separation.calculate_separation_scores(dataframes)
+        # Confirm have entered labels for all groups
+        input_labels = [st.session_state[f"group_name_{i}"] for i in range(num_groups)]
+        if any(x == '' for x in input_labels):
+            st.warning("Please enter a name for every group")
+        else:
+            # Calculate separation scores for all groups at once
+            sep = cellphe.separation.calculate_separation_scores(dataframes)
 
-        # Sort the separation scores in descending order by the 'Separation' column
-        sep_sorted = sep.sort_values(by='Separation', ascending=False)
+            # Sort the separation scores in descending order by the 'Separation' column
+            sep_sorted = sep.sort_values(by='Separation', ascending=False)
 
-        # Slider for selecting the top number of discriminatory features to display
-        most_discriminatory = cellphe.separation.optimal_separation_features(sep_sorted)
-        num_most_discriminatory = len(most_discriminatory)
-        n = st.slider(
-            "Select number of top discriminatory features to display", 
-            1, len(sep_sorted), num_most_discriminatory
-        )
+            # Slider for selecting the top number of discriminatory features to display
+            most_discriminatory = cellphe.separation.optimal_separation_features(sep_sorted)
+            num_most_discriminatory = len(most_discriminatory)
+            n = st.slider(
+                "Select number of top discriminatory features to display", 
+                1, len(sep_sorted), num_most_discriminatory
+            )
 
-        # Get the top n separation scores for display and analysis
-        top_sep_df = sep_sorted.head(n)
+            # Get the top n separation scores for display and analysis
+            top_sep_df = sep_sorted.head(n)
 
-        # Display PCA and separation scores side by side
-        plot_sep_and_pca_side_by_side(
-            top_sep_df, 
-            top_sep_df['Feature'].tolist(), 
-            pd.concat(dataframes, ignore_index=True), 
-            labels
-        )
+            # Display PCA and separation scores side by side
+            plot_sep_and_pca_side_by_side(
+                top_sep_df, 
+                top_sep_df['Feature'].tolist(), 
+                pd.concat(dataframes, ignore_index=True), 
+                labels
+            )
 
-        # Dropdown to select feature for the boxplot
-        combined_data = pd.concat(dataframes, ignore_index=True)
-        selected_feature = st.selectbox("Select Feature for Boxplot", combined_data.columns)
+            # Dropdown to select feature for the boxplot
+            combined_data = pd.concat(dataframes, ignore_index=True)
+            selected_feature = st.selectbox("Select Feature for Boxplot", combined_data.columns)
 
-        # Plot boxplot for the selected feature across groups
-        st.write("Boxplot for Selected Feature:")
-        plot_boxplot_with_points(combined_data, selected_feature, labels)
+            # Plot boxplot for the selected feature across groups
+            st.write("Boxplot for Selected Feature:")
+            plot_boxplot_with_points(combined_data, selected_feature, labels)
 
-        st.header("Cell Classification")
-        st.write("Upload a test dataset for classification. This must have the same columns as the training data.")
-        test_file = st.file_uploader("Upload Test CSV File", type=["csv"])
+            st.header("Cell Classification")
+            st.write("Upload a test dataset for classification. This must have the same columns as the training data.")
+            test_file = st.file_uploader("Upload Test CSV File", type=["csv"])
 
-        if test_file is not None:
-            test_df = pd.read_csv(test_file)
-            test_df = test_df.dropna()
-            if test_df.empty or not all(col in test_df.columns for col in top_sep_df['Feature'].tolist()):
-                st.error("The test dataset is invalid or does not contain the necessary features.")
-            else:
-                # Use n directly for the number of features for classification
-                # Select top n features from each dataframe for training
-                train_features = top_sep_df['Feature'].tolist()
-                train_x = pd.concat(
-                    [df[train_features] for df in dataframes], ignore_index=True
-                ).iloc[:, :n]
-                train_y = np.array(labels)
-
-                # Remove rows with NaN values from the training data
-                train_x = train_x.dropna()
-                train_y = train_y[train_x.index]
-
-                # Select the same features for the test data
-                test_x = test_df[train_features].iloc[:, :n]
-
-                # Classify the cells using the cleaned training data
-                predictions = cellphe.classification.classify_cells(train_x, train_y, test_x)
-
-                # Print the shape for debugging
-                st.write("Predictions Shape:", predictions.shape)
-
-                # Create DataFrame from predictions using only the 4th column (index 3)
-                predictions_df = pd.DataFrame({
-                    'CellID': test_df['CellID'],
-                    'Class': predictions[:, 3]
-                })
-
-                # Ask user if they have true labels for the test set using a selectbox
-                has_true_labels = st.selectbox(
-                    "Do you have true labels for the test set?",
-                    options=["No", "Yes"]
-                )
-
-                if has_true_labels == "Yes":
-                    true_labels_file = st.file_uploader("Upload CSV File with True Labels", type=["csv"])
-                    if true_labels_file is not None:
-                        true_labels_df = pd.read_csv(true_labels_file)
-                        if not ('CellID' in true_labels_df.columns and 'Class' in true_labels_df.columns):
-                            st.error("The true labels file must contain 'CellID' and 'Class' columns.")
-                        else:
-                            # Merge true labels with predictions for comparison
-                            comparison_df = pd.merge(
-                                predictions_df, true_labels_df[['CellID', 'Class']],
-                                on='CellID', suffixes=('_pred', '_true')
-                            )
-
-                            st.write("Comparison between Predicted and True Classes:")
-                            st.dataframe(comparison_df, use_container_width=True)
-
-                            # Create a confusion matrix
-                            confusion_matrix = pd.crosstab(
-                                comparison_df['Class_true'], comparison_df['Class_pred'], 
-                                rownames=['True Class'], colnames=['Predicted Class']
-                            )
-                            
-                            # Display the confusion matrix as a heatmap
-                            st.write("Confusion Matrix (Heatmap):")
-                            plt.figure(figsize=(10, 6))
-                            sns.heatmap(confusion_matrix, annot=True, fmt="d", cmap="Blues")
-                            plt.title("Confusion Matrix")
-                            st.pyplot(plt.gcf())
+            if test_file is not None:
+                test_df = pd.read_csv(test_file)
+                test_df = test_df.dropna()
+                if test_df.empty or not all(col in test_df.columns for col in top_sep_df['Feature'].tolist()):
+                    st.error("The test dataset is invalid or does not contain the necessary features.")
                 else:
-                    # Display pie chart of predicted class distribution if user does not have true labels
-                    st.write("Classification Distribution:")
-                    pie_data = predictions_df['Class'].value_counts()
-                    plt.figure(figsize=(8, 6))
-                    plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-                    plt.title('Predicted Class Distribution')
-                    st.pyplot(plt.gcf())
+                    # Use n directly for the number of features for classification
+                    # Select top n features from each dataframe for training
+                    train_features = top_sep_df['Feature'].tolist()
+                    train_x = pd.concat(
+                        [df[train_features] for df in dataframes], ignore_index=True
+                    ).iloc[:, :n]
+                    train_y = np.array(labels)
+
+                    # Remove rows with NaN values from the training data
+                    train_x = train_x.dropna()
+                    train_y = train_y[train_x.index]
+
+                    # Select the same features for the test data
+                    test_x = test_df[train_features].iloc[:, :n]
+
+                    # Classify the cells using the cleaned training data
+                    predictions = cellphe.classification.classify_cells(train_x, train_y, test_x)
+
+                    # Print the shape for debugging
+                    st.write("Predictions Shape:", predictions.shape)
+
+                    # Create DataFrame from predictions using only the 4th column (index 3)
+                    predictions_df = pd.DataFrame({
+                        'CellID': test_df['CellID'],
+                        'Class': predictions[:, 3]
+                    })
+
+                    # Ask user if they have true labels for the test set using a selectbox
+                    has_true_labels = st.selectbox(
+                        "Do you have true labels for the test set?",
+                        options=["No", "Yes"]
+                    )
+
+                    if has_true_labels == "Yes":
+                        true_labels_file = st.file_uploader("Upload CSV File with True Labels", type=["csv"])
+                        if true_labels_file is not None:
+                            true_labels_df = pd.read_csv(true_labels_file)
+                            if not ('CellID' in true_labels_df.columns and 'Class' in true_labels_df.columns):
+                                st.error("The true labels file must contain 'CellID' and 'Class' columns.")
+                            else:
+                                # Merge true labels with predictions for comparison
+                                comparison_df = pd.merge(
+                                    predictions_df, true_labels_df[['CellID', 'Class']],
+                                    on='CellID', suffixes=('_pred', '_true')
+                                )
+
+                                st.write("Comparison between Predicted and True Classes:")
+                                st.dataframe(comparison_df, use_container_width=True)
+
+                                # Create a confusion matrix
+                                confusion_matrix = pd.crosstab(
+                                    comparison_df['Class_true'], comparison_df['Class_pred'], 
+                                    rownames=['True Class'], colnames=['Predicted Class']
+                                )
+                                
+                                # Display the confusion matrix as a heatmap
+                                st.write("Confusion Matrix (Heatmap):")
+                                plt.figure(figsize=(10, 6))
+                                sns.heatmap(confusion_matrix, annot=True, fmt="d", cmap="Blues")
+                                plt.title("Confusion Matrix")
+                                st.pyplot(plt.gcf())
+                    else:
+                        # Display pie chart of predicted class distribution if user does not have true labels
+                        st.write("Classification Distribution:")
+                        pie_data = predictions_df['Class'].value_counts()
+                        plt.figure(figsize=(8, 6))
+                        plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+                        plt.title('Predicted Class Distribution')
+                        st.pyplot(plt.gcf())
     else:
-        st.warning("No separation scores could be calculated.")
+        st.warning("Please upload a valid CSV for every group.")
