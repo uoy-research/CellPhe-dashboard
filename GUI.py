@@ -373,7 +373,7 @@ with tab3:
             most_discriminatory = cellphe.separation.optimal_separation_features(sep_sorted)
             num_most_discriminatory = len(most_discriminatory)
             n = st.slider(
-                "Select number of top discriminatory features to display", 
+                "Select number of top discriminatory features to use for downstream analyses",
                 1, len(sep_sorted), num_most_discriminatory
             )
 
@@ -382,9 +382,9 @@ with tab3:
 
             # Display PCA and separation scores side by side
             plot_sep_and_pca_side_by_side(
-                top_sep_df, 
-                top_sep_df['Feature'].tolist(), 
-                pd.concat(dataframes, ignore_index=True), 
+                top_sep_df,
+                top_sep_df['Feature'].tolist(),
+                pd.concat(dataframes, ignore_index=True),
                 labels
             )
 
