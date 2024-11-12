@@ -427,53 +427,42 @@ with tab3:
                     # Print the shape for debugging
                     st.write("Predictions Shape:", predictions.shape)
 
+                    st.text_input(f"Enter a label for the test set",
+                                  key="test_label")
+                    if 'test_label' in st.session_state:
+                        test_label = st.session_state.test_label
+                    else:
+                        test_label = 'Test Set'
+
                     # Create DataFrame from predictions using only the 4th column (index 3)
                     predictions_df = pd.DataFrame({
                         'CellID': test_df['CellID'],
-                        'Class': predictions[:, 3]
+                        'Predicted': predictions[:, 3],
+                        'Actual': test_label
                     })
 
-                    # Ask user if they have true labels for the test set using a selectbox
-                    has_true_labels = st.selectbox(
-                        "Do you have true labels for the test set?",
-                        options=["No", "Yes"]
+                    # Display pie chart of predicted class distribution if user does not have true labels
+                    st.write("Classification Distribution:")
+                    pie_data = predictions_df['Predicted'].value_counts()
+                    plt.figure(figsize=(8, 6))
+                    plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+                    plt.title('Predicted Class Distribution')
+                    st.pyplot(plt.gcf())
+
+                    st.write("Comparison between Predicted and True Classes:")
+                    #st.dataframe(comparison_df, use_container_width=True)
+
+                    # Create a confusion matrix
+                    confusion_matrix = pd.crosstab(
+                        predictions_df['Predicted'], predictions_df['Actual'],
+                        rownames=['Predicted Class'], colnames=['Actual Class']
                     )
 
-                    if has_true_labels == "Yes":
-                        true_labels_file = st.file_uploader("Upload CSV File with True Labels", type=["csv"])
-                        if true_labels_file is not None:
-                            true_labels_df = pd.read_csv(true_labels_file)
-                            if not ('CellID' in true_labels_df.columns and 'Class' in true_labels_df.columns):
-                                st.error("The true labels file must contain 'CellID' and 'Class' columns.")
-                            else:
-                                # Merge true labels with predictions for comparison
-                                comparison_df = pd.merge(
-                                    predictions_df, true_labels_df[['CellID', 'Class']],
-                                    on='CellID', suffixes=('_pred', '_true')
-                                )
-
-                                st.write("Comparison between Predicted and True Classes:")
-                                st.dataframe(comparison_df, use_container_width=True)
-
-                                # Create a confusion matrix
-                                confusion_matrix = pd.crosstab(
-                                    comparison_df['Class_true'], comparison_df['Class_pred'], 
-                                    rownames=['True Class'], colnames=['Predicted Class']
-                                )
-                                
-                                # Display the confusion matrix as a heatmap
-                                st.write("Confusion Matrix (Heatmap):")
-                                plt.figure(figsize=(10, 6))
-                                sns.heatmap(confusion_matrix, annot=True, fmt="d", cmap="Blues")
-                                plt.title("Confusion Matrix")
-                                st.pyplot(plt.gcf())
-                    else:
-                        # Display pie chart of predicted class distribution if user does not have true labels
-                        st.write("Classification Distribution:")
-                        pie_data = predictions_df['Class'].value_counts()
-                        plt.figure(figsize=(8, 6))
-                        plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-                        plt.title('Predicted Class Distribution')
-                        st.pyplot(plt.gcf())
+                    # Display the confusion matrix as a heatmap
+                    st.write("Confusion Matrix (Heatmap):")
+                    plt.figure(figsize=(10, 6))
+                    sns.heatmap(confusion_matrix, annot=True, fmt="d", cmap="Blues")
+                    plt.title("Confusion Matrix")
+                    st.pyplot(plt.gcf())
     else:
         st.warning("Please upload a valid CSV for every group.")
