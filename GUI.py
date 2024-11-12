@@ -424,9 +424,6 @@ with tab3:
                     # Classify the cells using the cleaned training data
                     predictions = cellphe.classification.classify_cells(train_x, train_y, test_x)
 
-                    # Print the shape for debugging
-                    st.write("Predictions Shape:", predictions.shape)
-
                     # Create DataFrame from predictions using only the 4th column (index 3)
                     predictions_df = pd.DataFrame({
                         'CellID': test_df['CellID'],
