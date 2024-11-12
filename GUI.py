@@ -427,18 +427,10 @@ with tab3:
                     # Print the shape for debugging
                     st.write("Predictions Shape:", predictions.shape)
 
-                    st.text_input(f"Enter a label for the test set",
-                                  key="test_label")
-                    if 'test_label' in st.session_state:
-                        test_label = st.session_state.test_label
-                    else:
-                        test_label = 'Test Set'
-
                     # Create DataFrame from predictions using only the 4th column (index 3)
                     predictions_df = pd.DataFrame({
                         'CellID': test_df['CellID'],
                         'Predicted': predictions[:, 3],
-                        'Actual': test_label
                     })
 
                     # Display pie chart of predicted class distribution if user does not have true labels
@@ -447,22 +439,6 @@ with tab3:
                     plt.figure(figsize=(8, 6))
                     plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
                     plt.title('Predicted Class Distribution')
-                    st.pyplot(plt.gcf())
-
-                    st.write("Comparison between Predicted and True Classes:")
-                    #st.dataframe(comparison_df, use_container_width=True)
-
-                    # Create a confusion matrix
-                    confusion_matrix = pd.crosstab(
-                        predictions_df['Predicted'], predictions_df['Actual'],
-                        rownames=['Predicted Class'], colnames=['Actual Class']
-                    )
-
-                    # Display the confusion matrix as a heatmap
-                    st.write("Confusion Matrix (Heatmap):")
-                    plt.figure(figsize=(10, 6))
-                    sns.heatmap(confusion_matrix, annot=True, fmt="d", cmap="Blues")
-                    plt.title("Confusion Matrix")
                     st.pyplot(plt.gcf())
     else:
         st.warning("Please upload a valid CSV for every group.")
