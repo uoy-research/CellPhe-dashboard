@@ -14,6 +14,8 @@ from cellphe import segment_images, track_images, cell_features, import_data, ti
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
+EXCLUDE_ANALYSIS_COLUMNS = ['CellID', 'FrameID', 'ROI_filename']
+
 # Function to assign feature categories based on substrings in the feature names
 def assign_color(feature, colour_mapping):
     # Check for substrings to assign to a group
@@ -124,7 +126,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     sep_df['Colour'] = sep_df['Feature'].apply(assign_color, colour_mapping=colour_mapping)
 
     # Create two columns for side-by-side plotting
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2, vertical_alignment="center")
 
     # Column 1: Separation Scores
     with col1:
@@ -269,58 +271,61 @@ with tab2:
             st.session_state['new_features_df'] = new_features_df
             
             # Dropdown for CellID
-            cell_id = st.selectbox("Select CellID", new_features_df["CellID"].unique())
-
+            col1, col2 = st.columns(2)
+            with col1:
+                cell_id = st.selectbox("Select CellID", new_features_df["CellID"].unique())
+            with col2:
+                # Exclude 'FrameID' and 'roi_filename' from the dropdown
+                selected_feature = st.selectbox("Select Feature", [col for col in new_features_df.columns if col not in EXCLUDE_ANALYSIS_COLUMNS])
             # Filter the dataframe based on the selected CellID
             cell_data = new_features_df[new_features_df["CellID"] == cell_id]
+            # Plot time-series and densities
+            col1, col2 = st.columns(2, vertical_alignment="center")
+            with col1:
+                # Plot the selected feature against FrameID (line plot)
+                if "FrameID" in cell_data.columns:
+                    plt.figure(figsize=(10, 6))
+                    plt.plot(cell_data["FrameID"], cell_data[selected_feature], linewidth=3)
+                    plt.title(f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}")
+                    plt.grid(False)  # Remove the grid
+                    st.pyplot(plt.gcf())
+                else:
+                    st.warning("FrameID column not found in data.")
 
-            # Exclude 'FrameID' and 'roi_filename' from the dropdown
-            exclude_columns = ['CellID', 'FrameID', 'ROI_filename']
-            selected_feature = st.selectbox("Select Feature", [col for col in cell_data.columns if col not in exclude_columns])
+            with col2:
+                # Plot density plots (KDE) for the selected feature across all frames
+                frame_groups = new_features_df.groupby("FrameID")[selected_feature]
 
-            st.header(f'Time Series Plot: {selected_feature} for Cell {cell_data["CellID"].values[0]}')
-            # Plot the selected feature against FrameID (line plot)
-            if "FrameID" in cell_data.columns:
                 plt.figure(figsize=(10, 6))
-                plt.plot(cell_data["FrameID"], cell_data[selected_feature], linewidth=3)
-                plt.title(f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}")
-                plt.grid(False)  # Remove the grid
+                color_map = plt.cm.viridis(np.linspace(0, 1, len(frame_groups)))
+
+                # Plot KDE for each frame with the corresponding color
+                for i, (frame_id, group) in enumerate(frame_groups):
+                    sns.kdeplot(group, color=color_map[i], linewidth=2)
+
+                plt.title(f'Density Plot of {selected_feature} by Frame')  # Changed to "Frame"
+                plt.xlabel(selected_feature)
+                plt.ylabel("Density")
+
+                # Add a color bar using the Viridis color map
+                norm = plt.Normalize(0, len(frame_groups) - 1)
+                sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+                sm.set_array([])  # Only needed for Matplotlib 3.1 and later
+
+                # Create colorbar using the current axes
+                cbar = plt.colorbar(sm, ax=plt.gca())
+                cbar.set_ticks(np.linspace(0, len(frame_groups) - 1, 5))  # Set to fewer intervals, e.g., 5
+                cbar.set_ticklabels([int(i) for i in np.linspace(0, len(frame_groups) - 1, 5)])  # Customize tick labels
+                cbar.set_label('Frame')  # Changed to "Frame"
+
                 st.pyplot(plt.gcf())
-            else:
-                st.warning("FrameID column not found in data.")
-
-            # Plot density plots (KDE) for the selected feature across all frames
-            st.header(f'Density Plots for Feature: {selected_feature}')
-            frame_groups = new_features_df.groupby("FrameID")[selected_feature]
-
-            plt.figure(figsize=(10, 6))
-            color_map = plt.cm.viridis(np.linspace(0, 1, len(frame_groups)))
-
-            # Plot KDE for each frame with the corresponding color
-            for i, (frame_id, group) in enumerate(frame_groups):
-                sns.kdeplot(group, color=color_map[i], linewidth=2)
-
-            plt.title(f'Density Plot of {selected_feature} by Frame')  # Changed to "Frame"
-            plt.xlabel(selected_feature)
-            plt.ylabel("Density")
-
-            # Add a color bar using the Viridis color map
-            norm = plt.Normalize(0, len(frame_groups) - 1)
-            sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
-            sm.set_array([])  # Only needed for Matplotlib 3.1 and later
-
-            # Create colorbar using the current axes
-            cbar = plt.colorbar(sm, ax=plt.gca())
-            cbar.set_ticks(np.linspace(0, len(frame_groups) - 1, 5))  # Set to fewer intervals, e.g., 5
-            cbar.set_ticklabels([int(i) for i in np.linspace(0, len(frame_groups) - 1, 5)])  # Customize tick labels
-            cbar.set_label('Frame')  # Changed to "Frame"
-
-            st.pyplot(plt.gcf())
 
 # Tab 3: PCA & Separation Scores
 with tab3:
-    st.header("PCA and Separation Scores")
-    st.markdown("Select the number of groups you want to analyze. They will be compared on their time-series features (as output by the `time_series_features` function in CellPhe).")
+    st.markdown("# PCA and Separation Scores")
+    st.markdown("""Select the number of groups you want to analyze. They will be
+                compared on their time-series features (as output by the
+                `time_series_features` function in CellPhe).""")
 
     # Allow user to select the number of groups
     num_groups = st.number_input("Enter the Number of Groups", min_value=2, max_value=10, value=2, step=1)
@@ -363,6 +368,7 @@ with tab3:
         if any(x == '' for x in input_labels):
             st.warning("Please enter a name for every group")
         else:
+            combined_data = pd.concat(dataframes, ignore_index=True)
             # Calculate separation scores for all groups at once
             sep = cellphe.separation.calculate_separation_scores(dataframes)
 
@@ -372,46 +378,50 @@ with tab3:
             # Slider for selecting the top number of discriminatory features to display
             most_discriminatory = cellphe.separation.optimal_separation_features(sep_sorted)
             num_most_discriminatory = len(most_discriminatory)
+
+            
+            st.markdown("## Exploratory plots")
+            st.write("Rather than using all the available 1111 features, which contain can overlapping information, it can sometimes be useful to restrict analysis to a smaller subset of the features. Changing this slider will affect the number of features used in all downstream analyses, including: plotting the separation scores, the PCA plot, classifying new cells.")
             n = st.slider(
-                "Select number of top discriminatory features to use for downstream analyses",
+                "Number of features",
                 1, len(sep_sorted), num_most_discriminatory
             )
 
             # Get the top n separation scores for display and analysis
             top_sep_df = sep_sorted.head(n)
+            train_features = top_sep_df['Feature']
+            all_features = combined_data.columns
 
             # Display PCA and separation scores side by side
             plot_sep_and_pca_side_by_side(
                 top_sep_df,
-                top_sep_df['Feature'].tolist(),
-                pd.concat(dataframes, ignore_index=True),
+                train_features,
+                combined_data,
                 labels
             )
 
             # Dropdown to select feature for the boxplot
-            combined_data = pd.concat(dataframes, ignore_index=True)
-            selected_feature = st.selectbox("Select Feature for Boxplot", combined_data.columns)
+            st.write(f"Compare the {num_groups} groups across features by displaying boxplots for a selected feature.")
+            col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
+            with col1:
+                selected_feature = st.selectbox("Select Feature for Boxplot", all_features)
+            with col2:
+                plot_boxplot_with_points(combined_data, selected_feature, labels)
 
-            # Plot boxplot for the selected feature across groups
-            st.write("Boxplot for Selected Feature:")
-            plot_boxplot_with_points(combined_data, selected_feature, labels)
-
-            st.header("Cell Classification")
-            st.write("Upload a test dataset for classification. This must have the same columns as the training data.")
+            st.divider()
+            st.markdown("# Classification of new cells")
+            st.write("Upload a test dataset for classification to see how the cells compare to the training data. This must have the same columns as the training data.")
             test_file = st.file_uploader("Upload Test CSV File", type=["csv"])
 
             if test_file is not None:
                 test_df = pd.read_csv(test_file)
                 test_df = test_df.dropna()
-                if test_df.empty or not all(col in test_df.columns for col in top_sep_df['Feature'].tolist()):
+                if test_df.empty or not all(col in test_df.columns for col in train_features):
                     st.error("The test dataset is invalid or does not contain the necessary features.")
                 else:
                     # Use n directly for the number of features for classification
                     # Select top n features from each dataframe for training
-                    train_features = top_sep_df['Feature'].tolist()
-                    train_x = pd.concat(
-                        [df[train_features] for df in dataframes], ignore_index=True
-                    ).iloc[:, :n]
+                    train_x = combined_data[train_features]
                     train_y = np.array(labels)
 
                     # Remove rows with NaN values from the training data
@@ -422,20 +432,21 @@ with tab3:
                     test_x = test_df[train_features].iloc[:, :n]
 
                     # Classify the cells using the cleaned training data
-                    predictions = cellphe.classification.classify_cells(train_x, train_y, test_x)
-
-                    # Create DataFrame from predictions using only the 4th column (index 3)
-                    predictions_df = pd.DataFrame({
-                        'CellID': test_df['CellID'],
-                        'Predicted': predictions[:, 3],
-                    })
+                    test_df['Predicted'] = cellphe.classification.classify_cells(train_x, train_y, test_x)[:, 3]
 
                     # Display pie chart of predicted class distribution if user does not have true labels
-                    st.write("Classification Distribution:")
-                    pie_data = predictions_df['Predicted'].value_counts()
+                    st.write("Distribution of predicted cell classes:")
+                    pie_data = test_df['Predicted'].value_counts()
                     plt.figure(figsize=(8, 6))
                     plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-                    plt.title('Predicted Class Distribution')
                     st.pyplot(plt.gcf())
+
+                    st.write("Use the dropdown below to investigate the differences in the features between the predicted classes for the test set.")
+                    col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
+                    with col1:
+                        selected_feature_test = st.selectbox("Select Feature for test set Boxplot", all_features)
+                    with col2:
+                        st.write("Boxplot for Selected Feature:")
+                        plot_boxplot_with_points(test_df, selected_feature_test, test_df['Predicted'])
     else:
         st.warning("Please upload a valid CSV for every group.")
