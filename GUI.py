@@ -276,6 +276,16 @@ else:
 # Tab 1: Image Processing
 with tab1:
     st.markdown("# Image Processing")
+    st.markdown("""
+                Run the CellPhe pipeline from start to finish on your images.
+                This contains several steps and will take some time.
+                  1. Segments the images using CellPose
+                  2. Tracks the images using TrackMate
+                  3. Imports the tracked and segmented images into CellPhe
+                  4. Generates the CellPhe cell features for each frame
+                  5. Generate the CellPhe summary features for each cell across
+                the entire time-lapse.
+                """)
     col1, col2 = st.columns([0.3, 0.7], vertical_alignment='center')
     with col1:
         clicked = st.button("Select image folder")
