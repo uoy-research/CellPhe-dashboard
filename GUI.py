@@ -323,10 +323,6 @@ with tab2:
         elif "FrameID" not in new_features_df.columns:
             st.error("Upload a feature set of the cells on each frame as output by the cell_features() function in CellPhe.")
         else:
-            # Store the data in session state to retain across interactions
-            # TODO needed? never seems to be accessed
-            st.session_state['new_features_df'] = new_features_df
-            
             # Dropdown for CellID
             col1, col2 = st.columns(2)
             with col1:
