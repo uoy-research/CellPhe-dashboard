@@ -87,6 +87,9 @@ def process_images(image_folder, framerate=0.0028):
     if not os.path.exists(masks_folder):
         os.makedirs(masks_folder)
 
+    # TODO should these be temporary folders? or user configurable? Ultimately
+    # the user doesn't need to keep the ROIs and Masks
+
     tracked_csv = os.path.join(image_folder, "../", os.path.basename(image_folder) + "_tracked.csv")
     tracked_csv = os.path.abspath(tracked_csv)
     
