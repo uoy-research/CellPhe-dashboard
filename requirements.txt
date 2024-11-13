@@ -1,7 +1,7 @@
-cellphe
-matplotlib
-numpy
-pandas
-scikit-learn
-seaborn
-streamlit
+cellphe==0.2.0
+matplotlib==3.9.2
+numpy==2.0.2
+pandas==2.2.3
+scikit-learn==1.5.2
+seaborn==0.13.2
+streamlit==1.39.0
