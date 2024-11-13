@@ -16,6 +16,21 @@ from tkinter import filedialog
 
 # Setup tkinter (only used for folder selector)
 root = tk.Tk()
+# Don't show hidden files/dirs in the file dialog
+# Taken from: https://stackoverflow.com/a/54068050/1020006
+try:
+    # call a dummy dialog with an impossible option to initialize the file
+    # dialog without really getting a dialog window; this will throw a
+    # TclError, so we need a try...except :
+    try:
+        root.tk.call('tk_getOpenFile', '-foobarbaz')
+    except tk.TclError:
+        pass
+    # now set the magic variables accordingly
+    root.tk.call('set', '::tk::dialog::file::showHiddenBtn', '1')
+    root.tk.call('set', '::tk::dialog::file::showHiddenVar', '0')
+except:
+    pass
 root.withdraw()
 
 # Make folder picker dialog appear on top of other windows
@@ -254,8 +269,10 @@ with tab1:
         st.session_state.image_folder = filedialog.askdirectory(master=root)
         st.rerun()
 
+
     # Button to start processing
     if image_folder != ' ':
+        # TODO Validate that the folder contains images
         if st.button("Process Images"):
             st.write(f"Processing images from folder: {image_folder}")
             # Call the process_images function (Assuming it is defined elsewhere in your code)
