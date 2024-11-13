@@ -279,10 +279,10 @@ with tab2:
                 # Exclude 'FrameID' and 'roi_filename' from the dropdown
                 selected_feature = st.selectbox("Select Feature", [col for col in new_features_df.columns if col not in EXCLUDE_ANALYSIS_COLUMNS])
             # Filter the dataframe based on the selected CellID
-            cell_data = new_features_df[new_features_df["CellID"] == cell_id]
             # Plot time-series and densities
             col1, col2 = st.columns(2, vertical_alignment="center")
             with col1:
+                cell_data = new_features_df[new_features_df["CellID"] == cell_id]
                 # Plot the selected feature against FrameID (line plot)
                 if "FrameID" in cell_data.columns:
                     plt.figure(figsize=(10, 6))
