@@ -11,6 +11,15 @@ import warnings
 import cellphe
 import matplotlib.colors as mcolors
 from cellphe import segment_images, track_images, cell_features, import_data, time_series_features
+import tkinter as tk
+from tkinter import filedialog
+
+# Setup tkinter (only used for folder selector)
+root = tk.Tk()
+root.withdraw()
+
+# Make folder picker dialog appear on top of other windows
+root.wm_attributes('-topmost', 1)
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -228,15 +237,26 @@ st.title("The CellPhe Toolkit for Cell Phenotyping")
 # Create tabs
 tab1, tab2, tab3 = st.tabs(["Image Processing", "Single Population", "Multiple Populations"])
 
+if 'image_folder' not in st.session_state:
+    image_folder = ' '
+else:
+    image_folder = st.session_state.image_folder
+
 # Tab 1: Image Processing
 with tab1:
-    st.header("Image Processing")
-    # Folder selection for image processing
-    image_folder = st.text_input("Enter the path to the folder containing the images:")
+    st.markdown("# Image Processing")
+    col1, col2 = st.columns([0.3, 0.7], vertical_alignment='center')
+    with col1:
+        clicked = st.button("Select image folder")
+    with col2:
+        st.markdown(f"Selected folder: `{image_folder}`")
+    if clicked:
+        st.session_state.image_folder = filedialog.askdirectory(master=root)
+        st.rerun()
 
     # Button to start processing
-    if st.button("Process Images"):
-        if image_folder:
+    if image_folder != ' ':
+        if st.button("Process Images"):
             st.write(f"Processing images from folder: {image_folder}")
             # Call the process_images function (Assuming it is defined elsewhere in your code)
             ts_variables = process_images(image_folder)
@@ -245,12 +265,10 @@ with tab1:
                 st.write("Time series feature extraction completed.")
             else:
                 st.write("No time series features extracted.")
-        else:
-            st.warning("Please enter a valid image folder path.")
 
 # Tab 2: Single Population Characterisation
 with tab2:
-    st.header("Single Population Temporal Characterisation")
+    st.markdown("# Single Population Temporal Characterisation")
     st.markdown("Analysis a single population's temporal characteristics, as obtained by the `cell_features()` function.")
 
     # Allow user to upload a CSV file containing cell features
@@ -269,6 +287,7 @@ with tab2:
             st.error("Upload a feature set of the cells on each frame as output by the cell_features() function in CellPhe.")
         else:
             # Store the data in session state to retain across interactions
+            # TODO needed? never seems to be accessed
             st.session_state['new_features_df'] = new_features_df
             
             # Dropdown for CellID
