@@ -41,6 +41,19 @@ warnings.filterwarnings('ignore')
 
 EXCLUDE_ANALYSIS_COLUMNS = ['CellID', 'FrameID', 'ROI_filename']
 
+def number_tifs_in_folder(folder: str):
+    """
+    Checks whether there is at least one TIF in the specified folder.
+
+    :param folder: The folder to check.
+    :return: A boolean where True indicates at least one TIF is in the
+    directory.
+    """
+    contents = [x for x in os.listdir(image_folder) if
+                os.path.isfile(os.path.join(image_folder, x))]
+    extensions = [os.path.splitext(x)[1] for x in contents]
+    return sum(x == '.tif' for x in extensions)
+
 # Function to assign feature categories based on substrings in the feature names
 def assign_color(feature, colour_mapping):
     # Check for substrings to assign to a group
@@ -272,16 +285,20 @@ with tab1:
 
     # Button to start processing
     if image_folder != ' ':
-        # TODO Validate that the folder contains images
-        if st.button("Process Images"):
-            st.write(f"Processing images from folder: {image_folder}")
-            # Call the process_images function (Assuming it is defined elsewhere in your code)
-            ts_variables = process_images(image_folder)
-            
-            if not ts_variables.empty:
-                st.write("Time series feature extraction completed.")
-            else:
-                st.write("No time series features extracted.")
+        # Validate that the folder contains images
+        if (n_tifs := number_tifs_in_folder(image_folder)) == 0:
+            st.warning("No TIFs found in folder")
+        else:
+            st.info(f"Found {n_tifs} images.")
+            if st.button("Process Images"):
+                st.write(f"Processing images from folder: {image_folder}")
+                # Call the process_images function (Assuming it is defined elsewhere in your code)
+                ts_variables = process_images(image_folder)
+
+                if not ts_variables.empty:
+                    st.write("Time series feature extraction completed.")
+                else:
+                    st.write("No time series features extracted.")
 
 # Tab 2: Single Population Characterisation
 with tab2:
