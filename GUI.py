@@ -13,28 +13,33 @@ import matplotlib.colors as mcolors
 from cellphe import segment_images, track_images, cell_features, import_data, time_series_features
 import tkinter as tk
 from tkinter import filedialog
+import platform
+import sys
 
-# Setup tkinter (only used for folder selector)
-root = tk.Tk()
-# Don't show hidden files/dirs in the file dialog
-# Taken from: https://stackoverflow.com/a/54068050/1020006
-try:
-    # call a dummy dialog with an impossible option to initialize the file
-    # dialog without really getting a dialog window; this will throw a
-    # TclError, so we need a try...except :
+IS_APPLE_SILICON_MAC = sys.platform == 'darwin' and platform.processor() == 'arm'
+
+if not IS_APPLE_SILICON_MAC:
+    # Setup tkinter (only used for folder selector)
+    root = tk.Tk()
+    # Don't show hidden files/dirs in the file dialog
+    # Taken from: https://stackoverflow.com/a/54068050/1020006
     try:
-        root.tk.call('tk_getOpenFile', '-foobarbaz')
-    except tk.TclError:
+        # call a dummy dialog with an impossible option to initialize the file
+        # dialog without really getting a dialog window; this will throw a
+        # TclError, so we need a try...except :
+        try:
+            root.tk.call('tk_getOpenFile', '-foobarbaz')
+        except tk.TclError:
+            pass
+        # now set the magic variables accordingly
+        root.tk.call('set', '::tk::dialog::file::showHiddenBtn', '1')
+        root.tk.call('set', '::tk::dialog::file::showHiddenVar', '0')
+    except:
         pass
-    # now set the magic variables accordingly
-    root.tk.call('set', '::tk::dialog::file::showHiddenBtn', '1')
-    root.tk.call('set', '::tk::dialog::file::showHiddenVar', '0')
-except:
-    pass
-root.withdraw()
+    root.withdraw()
 
-# Make folder picker dialog appear on top of other windows
-root.wm_attributes('-topmost', 1)
+    # Make folder picker dialog appear on top of other windows
+    root.wm_attributes('-topmost', 1)
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -288,13 +293,16 @@ with tab1:
                 """)
     col1, col2 = st.columns([0.3, 0.7], vertical_alignment='center')
     with col1:
-        clicked = st.button("Select image folder")
+        if not IS_APPLE_SILICON_MAC:
+            clicked = st.button("Select image folder")
+        else:
+            st.text_input("Image folder", key="image_folder", value=' ')
+            clicked = False
     with col2:
         st.markdown(f"Selected folder: `{image_folder}`")
     if clicked:
         st.session_state.image_folder = filedialog.askdirectory(master=root)
         st.rerun()
-
 
     # Button to start processing
     if image_folder != ' ':
