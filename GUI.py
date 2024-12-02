@@ -14,6 +14,9 @@ from cellphe import segment_images, track_images, cell_features, import_data, ti
 import tkinter as tk
 from tkinter import filedialog
 import platform
+from pathlib import Path
+import tempfile
+import shutil
 import sys
 
 IS_APPLE_SILICON_MAC = sys.platform == 'darwin' and platform.processor() == 'arm'
@@ -73,7 +76,14 @@ def assign_color(feature, colour_mapping):
     else:
         return colour_mapping['density']
 
-def process_images(image_folder, framerate=0.0028):
+def process_images(
+    image_folder,
+    framerate=0.0028,
+    keep_masks=False,
+    keep_rois=False,
+    keep_trackmate_features=False,
+    keep_cellphe_frame_features=False
+):
     """
     Process a folder of images to extract cell features and time series features.
 
@@ -84,67 +94,69 @@ def process_images(image_folder, framerate=0.0028):
     Returns:
     - tsvariables: DataFrame, extracted time series features (if applicable)
     """
-    
     # Step 1: Define paths
-    masks_folder = os.path.join(image_folder, "../", os.path.basename(image_folder) + "_masks")
-    masks_folder = os.path.abspath(masks_folder)
-    
-    if not os.path.exists(masks_folder):
-        os.makedirs(masks_folder)
+    out_dir = Path(image_folder).parent.absolute()
+    with tempfile.TemporaryDirectory() as masks_folder:
+        with tempfile.TemporaryDirectory() as rois_folder:
+            with tempfile.NamedTemporaryFile() as tracked_csv_fp:
 
-    # TODO should these be temporary folders? or user configurable? Ultimately
-    # the user doesn't need to keep the ROIs and Masks
+                # Step 2: Segment images
+                st.write("Segmenting cells...")
+                segment_images(image_folder, masks_folder)
+                if keep_masks:
+                    shutil.make_archive(os.path.join(out_dir, "masks"),
+                                        "zip", masks_folder)
+                st.success("Segmentation completed.")
 
-    tracked_csv = os.path.join(image_folder, "../", os.path.basename(image_folder) + "_tracked.csv")
-    tracked_csv = os.path.abspath(tracked_csv)
-    
-    rois_folder = os.path.join(image_folder, "../", os.path.basename(image_folder) + "_rois")
-    rois_folder = os.path.abspath(rois_folder)
-    
-    if not os.path.exists(rois_folder):
-        os.makedirs(rois_folder)
+                # Step 3: Track images
+                st.write("Tracking cells...")
+                track_images(masks_folder, tracked_csv_fp.name, rois_folder)
+                if keep_rois:
+                    shutil.make_archive(os.path.join(out_dir, "rois"),
+                                        "zip", rois_folder)
+                if keep_trackmate_features:
+                    shutil.copy(tracked_csv_fp.name, os.path.join(out_dir,
+                                                                  "trackmate_features.csv"))
+                st.success("Tracking completed.")
 
-    # Step 2: Segment images
-    st.write("Segmenting cells...")
-    segment_images(image_folder, masks_folder)
-    st.success("Segmentation completed.")
+                # Step 4: Import tracked data
+                feature_table = import_data(tracked_csv_fp.name, "Trackmate_auto")
 
-    # Step 3: Track images
-    st.write("Tracking cells...")
-    track_images(masks_folder, tracked_csv, rois_folder)
-    st.success("Tracking completed.")
+                # Step 5: Extract features
+                st.write("Extracting CellPhe features...")
+                new_features = cell_features(feature_table, rois_folder, image_folder, framerate=framerate)
+                if keep_cellphe_frame_features:
+                    new_features.to_csv(
+                        os.path.join(out_dir, os.path.basename(image_folder) +
+                                     "_frame_features.csv"),
+                        index=False
+                    )
+                st.success("CellPhe feature extraction completed.")
 
-    # Step 4: Import tracked data
-    #st.write("Importing tracked data...")
-    feature_table = import_data(tracked_csv, "Trackmate_auto")
-    #st.success("Tracked data imported.")
+                # Check the counts of tracked frames for each cell
+                cell_counts = new_features['CellID'].value_counts()
 
-    # Step 5: Extract features
-    st.write("Extracting CellPhe features...")
-    new_features = cell_features(feature_table, rois_folder, image_folder, framerate=framerate)
-    st.success("CellPhe feature extraction completed.")
+                # Step 6: Extract time series features only for cells tracked for more than 5 frames
+                if any(cell_counts > 5):
+                    st.write("Extracting time series features for cells tracked for more than 5 frames...")
+                    
+                    # Filter new_features to include only cells with more than 3 frames
+                    valid_cells = cell_counts[cell_counts > 3].index
+                    filtered_features = new_features[new_features['CellID'].isin(valid_cells)]
+      
+                    # Extract time series features
+                    tsvariables = time_series_features(filtered_features)
 
-    # Check the counts of tracked frames for each cell
-    cell_counts = new_features['CellID'].value_counts()
+                    # Save the new features to a CSV file
+                    features_csv = os.path.join(out_dir,
+                                                os.path.basename(image_folder) +
+                                                "_timeseries_features.csv")
+                    tsvariables.to_csv(features_csv, index=False)
+                    st.success(f"Time series feature extraction completed. CSV saved as: {features_csv}")
+                else:
+                    st.write("No cells tracked for more than 5 frames. Skipping time series feature extraction.")
+                    tsvariables = pd.DataFrame()  # Return an empty DataFrame if no valid cells exist
 
-    # Step 6: Extract time series features only for cells tracked for more than 5 frames
-    if any(cell_counts > 5):
-        st.write("Extracting time series features for cells tracked for more than 5 frames...")
-        
-        # Filter new_features to include only cells with more than 3 frames
-        valid_cells = cell_counts[cell_counts > 3].index
-        filtered_features = new_features[new_features['CellID'].isin(valid_cells)]
-        
-        # Extract time series features
-        tsvariables = time_series_features(filtered_features)
-        
-        # Save the new features to a CSV file
-        features_csv = os.path.join(image_folder, "../", os.path.basename(image_folder) + "_tsvariables.csv")
-        tsvariables.to_csv(features_csv, index=False)
-        st.success(f"Time series feature extraction completed. CSV saved as: {features_csv}")
-    else:
-        st.write("No cells tracked for more than 5 frames. Skipping time series feature extraction.")
-        tsvariables = pd.DataFrame()  # Return an empty DataFrame if no valid cells exist
 
     return tsvariables
 
@@ -311,10 +323,22 @@ with tab1:
             st.warning("No TIFs found in folder")
         else:
             st.info(f"Found {n_tifs} images.")
+            save_rois = st.toggle("Keep ROIs?", value=True)
+            save_masks = st.toggle("Keep CellPose masks?", value=False)
+            save_frame_features = st.toggle("Keep CellPhe frame-features?",
+                                            value=True)
+            save_trackmate_features = st.toggle("Keep TrackMate features?",
+                                                   value=False)
             if st.button("Process Images"):
                 st.write(f"Processing images from folder: {image_folder}")
                 # Call the process_images function (Assuming it is defined elsewhere in your code)
-                ts_variables = process_images(image_folder)
+                ts_variables = process_images(
+                    image_folder,
+                    keep_masks=save_masks,
+                    keep_rois=save_rois,
+                    keep_trackmate_features=save_trackmate_features,
+                    keep_cellphe_frame_features=save_frame_features
+                )
 
                 if not ts_variables.empty:
                     st.write("Time series feature extraction completed.")
