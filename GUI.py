@@ -329,6 +329,13 @@ with tab1:
                                             value=True)
             save_trackmate_features = st.toggle("Keep TrackMate features?",
                                                    value=False)
+            frame_rate = st.number_input(
+                "Time period between frames (only used to provide a meaningful unit for cell velocity)",
+                min_value = 0.0,
+                max_value = 10.0,
+                value=5.0
+            )
+
             if st.button("Process Images"):
                 st.write(f"Processing images from folder: {image_folder}")
                 # Call the process_images function (Assuming it is defined elsewhere in your code)
@@ -337,7 +344,8 @@ with tab1:
                     keep_masks=save_masks,
                     keep_rois=save_rois,
                     keep_trackmate_features=save_trackmate_features,
-                    keep_cellphe_frame_features=save_frame_features
+                    keep_cellphe_frame_features=save_frame_features,
+                    framerate=frame_rate
                 )
 
                 if not ts_variables.empty:
