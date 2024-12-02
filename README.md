@@ -46,4 +46,4 @@ Then install the Python prequisites, ideally in a [new virtual environment](http
 
 Then you can run the app with:
 
-`streamlit run GUI.py --server.port=8501 --server.address=0.0.0.0`
+`streamlit run CellPheDashboard.py --server.port=8501 --server.address=0.0.0.0`
