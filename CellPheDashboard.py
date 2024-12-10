@@ -667,7 +667,7 @@ with tab3:
                     # Classify the cells using the cleaned training data
                     test_df["Predicted"] = cellphe.classification.classify_cells(
                         train_x, train_y, test_x
-                    )[:, 3]
+                    )
 
                     # Display pie chart of predicted class distribution if user does not have true labels
                     st.write("Distribution of predicted cell classes:")
