@@ -117,6 +117,7 @@ def process_images(
     keep_rois=False,
     keep_trackmate_features=False,
     keep_cellphe_frame_features=False,
+    cellpose_model='cyto'
 ):
     """
     Process a folder of images to extract cell features and time series features.
@@ -136,7 +137,7 @@ def process_images(
 
                 # Step 2: Segment images
                 st.write("Segmenting cells...")
-                segment_images(image_folder, masks_folder)
+                segment_images(image_folder, masks_folder, cellpose_model)
                 if keep_masks:
                     shutil.make_archive(
                         os.path.join(out_dir, "masks"), "zip", masks_folder
@@ -410,6 +411,7 @@ with tab1:
                 max_value=10.0,
                 value=5.0,
             )
+            cellpose_model = st.text_input("CellPose model", value="cyto")
 
             if st.button("Process Images"):
                 st.write(f"Processing images from folder: {image_folder}")
@@ -421,6 +423,7 @@ with tab1:
                     keep_trackmate_features=save_trackmate_features,
                     keep_cellphe_frame_features=save_frame_features,
                     framerate=frame_rate,
+                    cellpose_model=cellpose_model
                 )
 
                 if not ts_variables.empty:
