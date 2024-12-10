@@ -131,7 +131,7 @@ def process_images(
     # Step 1: Define paths
     out_dir = Path(image_folder).parent.absolute()
     with tempfile.TemporaryDirectory() as masks_folder:
-        with tempfile.TemporaryDirectory() as rois_folder:
+        with tempfile.NamedTemporaryFile() as rois_archive:
             with tempfile.NamedTemporaryFile() as tracked_csv_fp:
 
                 # Step 2: Segment images
@@ -145,10 +145,12 @@ def process_images(
 
                 # Step 3: Track images
                 st.write("Tracking cells...")
-                track_images(masks_folder, tracked_csv_fp.name, rois_folder)
+                track_images(masks_folder, tracked_csv_fp.name,
+                             rois_archive.name)
                 if keep_rois:
-                    shutil.make_archive(
-                        os.path.join(out_dir, "rois"), "zip", rois_folder
+                    shutil.copy(
+                        rois_archive.name,
+                        os.path.join(out_dir, "rois.zip"),
                     )
                 if keep_trackmate_features:
                     shutil.copy(
@@ -158,12 +160,13 @@ def process_images(
                 st.success("Tracking completed.")
 
                 # Step 4: Import tracked data
-                feature_table = import_data(tracked_csv_fp.name, "Trackmate_auto")
+                feature_table = import_data(tracked_csv_fp.name,
+                                            "Trackmate_auto", 10)
 
                 # Step 5: Extract features
                 st.write("Extracting CellPhe features...")
                 new_features = cell_features(
-                    feature_table, rois_folder, image_folder, framerate=framerate
+                    feature_table, rois_archive.name, image_folder, framerate=framerate
                 )
                 if keep_cellphe_frame_features:
                     new_features.to_csv(
@@ -175,40 +178,22 @@ def process_images(
                     )
                 st.success("CellPhe feature extraction completed.")
 
-                # Check the counts of tracked frames for each cell
-                cell_counts = new_features["CellID"].value_counts()
+                # Step 6: Extract time series features
+                st.write(
+                    "Extracting time series features..."
+                )
+                # Extract time series features
+                tsvariables = time_series_features(new_features)
 
-                # Step 6: Extract time series features only for cells tracked for more than 5 frames
-                if any(cell_counts > 5):
-                    st.write(
-                        "Extracting time series features for cells tracked for more than 5 frames..."
-                    )
-
-                    # Filter new_features to include only cells with more than 3 frames
-                    valid_cells = cell_counts[cell_counts > 3].index
-                    filtered_features = new_features[
-                        new_features["CellID"].isin(valid_cells)
-                    ]
-
-                    # Extract time series features
-                    tsvariables = time_series_features(filtered_features)
-
-                    # Save the new features to a CSV file
-                    features_csv = os.path.join(
-                        out_dir,
-                        os.path.basename(image_folder) + "_timeseries_features.csv",
-                    )
-                    tsvariables.to_csv(features_csv, index=False)
-                    st.success(
-                        f"Time series feature extraction completed. CSV saved as: {features_csv}"
-                    )
-                else:
-                    st.write(
-                        "No cells tracked for more than 5 frames. Skipping time series feature extraction."
-                    )
-                    tsvariables = (
-                        pd.DataFrame()
-                    )  # Return an empty DataFrame if no valid cells exist
+                # Save the new features to a CSV file
+                features_csv = os.path.join(
+                    out_dir,
+                    os.path.basename(image_folder) + "_timeseries_features.csv",
+                )
+                tsvariables.to_csv(features_csv, index=False)
+                st.success(
+                    f"Time series feature extraction completed. CSV saved as: {features_csv}"
+                )
 
     return tsvariables
 
@@ -388,6 +373,11 @@ with tab1:
                   4. Generates the CellPhe cell features for each frame
                   5. Generate the CellPhe summary features for each cell across
                 the entire time-lapse.
+
+                NB: the time-series summary features work best on cells tracked
+                for a long time. By default, only cells that are present in at least 10
+                frames are included in the analysis. If you have any unexpected results
+                it could be due to this.
                 """
     )
     col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
@@ -665,7 +655,7 @@ with tab3:
                     # Classify the cells using the cleaned training data
                     test_df["Predicted"] = cellphe.classification.classify_cells(
                         train_x, train_y, test_x
-                    )[:, 3]
+                    )
 
                     # Display pie chart of predicted class distribution if user does not have true labels
                     st.write("Distribution of predicted cell classes:")
