@@ -131,7 +131,7 @@ def process_images(
     # Step 1: Define paths
     out_dir = Path(image_folder).parent.absolute()
     with tempfile.TemporaryDirectory() as masks_folder:
-        with tempfile.TemporaryDirectory() as rois_folder:
+        with tempfile.NamedTemporaryFile() as rois_archive:
             with tempfile.NamedTemporaryFile() as tracked_csv_fp:
 
                 # Step 2: Segment images
@@ -145,10 +145,12 @@ def process_images(
 
                 # Step 3: Track images
                 st.write("Tracking cells...")
-                track_images(masks_folder, tracked_csv_fp.name, rois_folder)
+                track_images(masks_folder, tracked_csv_fp.name,
+                             rois_archive.name)
                 if keep_rois:
-                    shutil.make_archive(
-                        os.path.join(out_dir, "rois"), "zip", rois_folder
+                    shutil.copy(
+                        rois_archive.name,
+                        os.path.join(out_dir, "rois.zip"),
                     )
                 if keep_trackmate_features:
                     shutil.copy(
@@ -163,7 +165,7 @@ def process_images(
                 # Step 5: Extract features
                 st.write("Extracting CellPhe features...")
                 new_features = cell_features(
-                    feature_table, rois_folder, image_folder, framerate=framerate
+                    feature_table, rois_archive.name, image_folder, framerate=framerate
                 )
                 if keep_cellphe_frame_features:
                     new_features.to_csv(
