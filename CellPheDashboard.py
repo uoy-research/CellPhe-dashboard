@@ -17,17 +17,18 @@ from cellphe import (
     import_data,
     time_series_features,
 )
-import tkinter as tk
-from tkinter import filedialog
 import platform
 from pathlib import Path
 import tempfile
 import shutil
 import sys
 
-IS_APPLE_SILICON_MAC = sys.platform == "darwin" and platform.processor() == "arm"
+#IS_APPLE_SILICON_MAC = sys.platform == "darwin" and platform.processor() == "arm"
+IS_APPLE_SILICON_MAC = True
 
 if not IS_APPLE_SILICON_MAC:
+    import tkinter as tk
+    from tkinter import filedialog
     # Setup tkinter (only used for folder selector)
     root = tk.Tk()
     # Don't show hidden files/dirs in the file dialog
