@@ -14,7 +14,6 @@ RUN pip install --no-compile --no-cache-dir --user -r requirements.txt
 FROM python:3.12-slim AS app
 COPY --from=builder /root/.local /root/.local
 COPY --from=builder /app/CellPheDashboard.py .
-RUN apt-get update && apt-get install -y python3-tk
 
 EXPOSE 8501
 
