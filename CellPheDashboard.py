@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
+import umap
 import warnings
 import cellphe
 import matplotlib.colors as mcolors
@@ -227,6 +229,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
 
     # Create two columns for side-by-side plotting
     col1, col2 = st.columns(2, vertical_alignment="center")
+    col3, col4 = st.columns(2, vertical_alignment="center")
 
     # Column 1: Separation Scores
     with col1:
@@ -257,23 +260,24 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
 
         st.pyplot(plt.gcf())
 
+    # Preprocess data for dimensionality reduction
+    # Standardize the features
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(data[top_features])
+
+    # Create a DataFrame with the scaled data for easier handling
+    scaled_df = pd.DataFrame(scaled_data, columns=top_features)
+    scaled_df["Group"] = labels
+
+    # Drop rows with NaN values before PCA
+    scaled_df = scaled_df.dropna()
+
+    # Adjust labels to match the remaining rows after dropping NaNs
+    labels_cleaned = scaled_df["Group"].values
+    scaled_data_cleaned = scaled_df[top_features].values
+
     # Column 2: PCA Plot
     with col2:
-        # Standardize the features
-        scaler = StandardScaler()
-        scaled_data = scaler.fit_transform(data[top_features])
-
-        # Create a DataFrame with the scaled data for easier handling
-        scaled_df = pd.DataFrame(scaled_data, columns=top_features)
-        scaled_df["Group"] = labels
-
-        # Drop rows with NaN values before PCA
-        scaled_df = scaled_df.dropna()
-
-        # Adjust labels to match the remaining rows after dropping NaNs
-        labels_cleaned = scaled_df["Group"].values
-        scaled_data_cleaned = scaled_df[top_features].values
-
         # Perform PCA on the cleaned, scaled data
         pca = PCA(n_components=2)  # Use 2 principal components for visualization
         pca_scores = pca.fit_transform(scaled_data_cleaned)
@@ -288,9 +292,53 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
             data=pca_df, x="PC1", y="PC2", hue="Group", palette="tab10", s=100
         )
 
-        plt.title("PCA Scores Plot")
+        plt.title("PCA")
         plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.2f}% Variance)")
         plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.2f}% Variance)")
+        plt.legend(title="Group")
+        st.pyplot(plt.gcf())
+
+    # Column 3: tSNE Plot
+    with col3:
+        # Perform tSNE on the cleaned, scaled data
+        tsne_mod = TSNE(init="random", perplexity=3)
+        tsne_scores = tsne_mod.fit_transform(scaled_data_cleaned)
+
+        # Create a DataFrame for tSNE scores
+        tsne_df = pd.DataFrame(tsne_scores, columns=["Dim1", "Dim2"])
+        tsne_df["Group"] = labels_cleaned
+
+        # Plot tSNE scores
+        plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
+        sns.scatterplot(
+            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
+        )
+
+        plt.title("tSNE")
+        plt.xlabel("")
+        plt.ylabel("")
+        plt.legend(title="Group")
+        st.pyplot(plt.gcf())
+
+    # Column 4: UMAP Plot
+    with col4:
+        # Perform UMAP on the cleaned, scaled data
+        umap_mod = umap.UMAP()
+        umap_scores = umap_mod.fit_transform(scaled_data_cleaned)
+
+        # Create a DataFrame for UMAP scores
+        umap_df = pd.DataFrame(umap_scores, columns=["Dim1", "Dim2"])
+        umap_df["Group"] = labels_cleaned
+
+        # Plot UMAP scores
+        plt.figure(figsize=(6, 6))  # Set equal size for the UMAP plot
+        sns.scatterplot(
+            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
+        )
+
+        plt.title("UMAP")
+        plt.xlabel("")
+        plt.ylabel("")
         plt.legend(title="Group")
         st.pyplot(plt.gcf())
 
