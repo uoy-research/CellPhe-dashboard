@@ -9,30 +9,20 @@ It is cross-platform and runs in a web browser and doesn't require any coding ex
 
 ## Prerequisites
 
-The only prerequisite is to install [Git](https://git-scm.com/) (or [GitHub Desktop](https://desktop.github.com/download/)) and optionally Docker (or [Docker Desktop](https://www.docker.com/products/docker-desktop/)) 
+The only prerequisite is to install Docker (or [Docker Desktop](https://www.docker.com/products/docker-desktop/)).
+Optionally you can run the dashboard from the source code, although this is more involved.
 
 ## Running with Docker
 
-Firstly, clone this repository:
+Simply download the Docker image from this repository:
 
-`git clone https://github.com/uoy-research/CellPhe-dashboard.git`
+`docker pull ghcr.io/uoy-research/CellPhe-dashboard`
 
-Then run Docker Compose from within this folder.
-This command will create a Docker image with all of the dependencies installed, it will take several minutes. 
+Then run it:
 
-`docker compose up --build`
+`docker run -p 8501:8501 uoy-research/CellPhe-dashboard`
 
-Once the above command finishes, you should able to access the app through a web browser at the address: `http://0.0.0.0:8501`.
-
-For all subsequent uses you do not need to install the dependencies again and can simply run `docker compose up`.
-
-### Caution: file system usage
-
-This dashboard uses [Streamlit](https://streamlit.io/) which has some heavy dependencies. 
-As a result, the Docker image is very large (~10GB), so ensure that you have this amount of hard drive space available.
-You can always clear your Docker cache with `docker system prune`.
-
-## Running directly with Python
+## Running from source
 
 The app can be run without Docker, although it will require setting up a suitable Python environment.
 
