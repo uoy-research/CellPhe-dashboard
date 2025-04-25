@@ -16,11 +16,11 @@ Optionally you can run the dashboard from the source code, although this is more
 
 Simply download the Docker image from this repository:
 
-`docker pull ghcr.io/uoy-research/cellphe-dashboard`
+`docker pull ghcr.io/uoy-research/cellphe-dashboard:main`
 
 Then run it:
 
-`docker run -p 8501:8501 uoy-research/cellphe-dashboard`
+`docker run -p 8501:8501 ghcr.io/uoy-research/cellphe-dashboard:main`
 
 ## Running from source
 
