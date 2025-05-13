@@ -586,7 +586,7 @@ with tab3:
 
     # Allow user to select the number of groups
     num_groups = st.number_input(
-        "Enter the Number of Groups", min_value=2, max_value=10, value=2, step=1
+        "Enter the Number of Groups", min_value=2, value=2, step=1
     )
     st.divider()
     dataframes = []
