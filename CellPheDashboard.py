@@ -589,7 +589,7 @@ with tab3:
         "Enter the Number of Groups", min_value=2, value=2, step=1
     )
     st.divider()
-    dataframes = []
+    dataframes = [None] * num_groups
     labels = []
 
     # Input fields for each group
@@ -601,32 +601,44 @@ with tab3:
             group_name = st.session_state[label_key]
         st.markdown(f"## Group {i+1}: {group_name}")
         st.text_input(f"Enter name for Group {i+1}", "", key=f"group_name_{i}")
-        uploaded_file = st.file_uploader(
-            f"Upload CSV File for Group {i+1}", type=["csv"], key=f"group_{i}"
-        )
-        if uploaded_file is None:
-            st.info("Please upload a CSV file to proceed.")
-        else:
-            # Read the uploaded CSV file
-            new_features_df = pd.read_csv(uploaded_file)
 
-            # Ensure that the file contains valid data
-            if new_features_df.empty or "CellID" not in new_features_df.columns:
-                st.error("Invalid file or missing 'CellID' column.")
-            elif "FrameID" in new_features_df.columns:
-                st.error(
-                    "Upload a feature set of the cells temporal summary measures, as output by the time_series_features() function in CellPhe."
-                )
+        num_files = st.number_input(
+            "Enter the Number of CSV files for this group", min_value=1, value=1, step=1,
+            key=f"n_files_group_{i}"
+        )
+        group_data = [None] * num_files
+        for j in range(num_files):
+            uploaded_file = st.file_uploader(
+                f"Upload CSV File for Group {i+1}", type=["csv"],
+                key=f"file_group_{i}_{j}"
+            )
+            if uploaded_file is None:
+                st.info("Please upload a CSV file to proceed.")
             else:
-                new_features_df = new_features_df.drop("CellID", axis=1)
-                dataframes.append(new_features_df)
-                labels.extend(
-                    [st.session_state[f"group_name_{i}"]] * len(new_features_df)
-                )
+                # Read the uploaded CSV file
+                new_features_df = pd.read_csv(uploaded_file)
+
+                # Ensure that the file contains valid data
+                if new_features_df.empty or "CellID" not in new_features_df.columns:
+                    st.error("Invalid file or missing 'CellID' column.")
+                elif "FrameID" in new_features_df.columns:
+                    st.error(
+                        "Upload a feature set of the cells temporal summary measures, as output by the time_series_features() function in CellPhe."
+                    )
+                else:
+                    new_features_df = new_features_df.drop("CellID", axis=1)
+                    group_data.append(new_features_df)
+        # Combine all the CSVs for this group
+        if sum(x is not None for x in group_data) == num_files:
+            group_data = pd.concat(group_data)
+            labels.extend(
+                [st.session_state[f"group_name_{i}"]] * len(group_data)
+            )
+            dataframes[i] = group_data
         st.divider()
 
     # Calculate separation scores if all dataframes are processed
-    if len(dataframes) == num_groups:
+    if sum(x is not None for x in dataframes) == num_groups:
         # Confirm have entered labels for all groups
         input_labels = [st.session_state[f"group_name_{i}"] for i in range(num_groups)]
         if any(x == "" for x in input_labels):
