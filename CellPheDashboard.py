@@ -1,17 +1,9 @@
 import time
 import os
-import pandas as pd
-import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
-import umap
+from pathlib import Path
+import shutil
 import warnings
-import cellphe
-import matplotlib.colors as mcolors
+
 from cellphe import (
     segment_images,
     track_images,
@@ -19,33 +11,23 @@ from cellphe import (
     import_data,
     time_series_features,
 )
-import platform
-from pathlib import Path
-import tempfile
-import shutil
-import sys
+import cellphe
+import pandas as pd
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+import streamlit as st
+import umap
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
 EXCLUDE_ANALYSIS_COLUMNS = ["CellID", "FrameID", "ROI_filename"]
-
-
-def number_tifs_in_folder(folder: str):
-    """
-    Checks whether there is at least one TIF in the specified folder.
-
-    :param folder: The folder to check.
-    :return: A boolean where True indicates at least one TIF is in the
-    directory.
-    """
-    contents = [
-        x
-        for x in os.listdir(image_folder)
-        if os.path.isfile(os.path.join(image_folder, x))
-    ]
-    extensions = [os.path.splitext(x)[1] for x in contents]
-    return sum(x == ".tif" for x in extensions)
+ARCHIVE_FN = "outputs.zip"
 
 
 # Function to assign feature categories based on substrings in the feature names
@@ -137,9 +119,6 @@ def process_images(
         st.write("An unexpected error occurred during segmentation")
         overall_bar.empty()
         return
-    if keep_masks:
-        pass
-        # TODO implement
 
     # Step 3: Track images
     overall_bar.progress(0.4, text="Tracking")
@@ -149,13 +128,6 @@ def process_images(
         st.write("An unexpected error occurred during tracking")
         overall_bar.empty()
         return
-    if keep_rois:
-        # TODO implement
-        pass
-
-    if keep_trackmate_features:
-        # TODO implement
-        pass
 
     # Step 4: Import tracked data
     try:
@@ -173,29 +145,19 @@ def process_images(
     # Step 5: Extract features
     overall_bar.progress(0.6, text="Extracting frame features")
     try:
-        new_features = cell_features(
+        frame_features = cell_features(
             feature_table, rois_archive, image_folder, framerate=framerate
         )
     except:
         st.write("An error occured while extracting the frame level features")
         overall_bar.empty()
         return
-    if keep_cellphe_frame_features:
-        pass
-        # TODO
-        #new_features.to_csv(
-        #    os.path.join(
-        #        out_dir,
-        #        os.path.basename(image_folder) + "_frame_features.csv",
-        #    ),
-        #    index=False,
-        #)
 
     # Step 6: Extract time series features
     overall_bar.progress(0.8, text="Extracting temporal features")
     # Extract time series features
     try:
-        tsvariables = time_series_features(new_features)
+        tsvariables = time_series_features(frame_features)
     except:
         st.write("An error occured while extracting the temporal features, NB: generally at least 20 frames are needed for robust calculation")
         overall_bar.empty()
@@ -207,6 +169,18 @@ def process_images(
     time.sleep(1)
 
     overall_bar.empty()
+
+    if not keep_masks:
+        shutil.rmtree(masks_folder)
+    if not keep_rois:
+        os.remove(rois_archive)
+    if not keep_trackmate_features:
+        os.remove(trackmate_csv)
+    if keep_cellphe_frame_features:
+        frame_features.to_csv(frame_features_csv, index=False)
+
+    shutil.make_archive("outputs", "zip", "outputs")
+
     return tsvariables
 
 
@@ -482,12 +456,18 @@ with tab1:
                 cellpose_model=cellpose_model
             )
 
-            # TODO add ability to download
-
             if ts_variables is None or ts_variables.empty:
                 st.write("No time series features extracted.")
             else:
                 st.write("Time series feature extraction completed.")
+                output_fn = f"cellphe_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+                with open(ARCHIVE_FN, "rb") as file:
+                    st.download_button(
+                        label="Download features",
+                        data=file,
+                        file_name=output_fn,
+                        mime="application/zip",
+                    )
 
 # Tab 2: Single Population Characterisation
 with tab2:
