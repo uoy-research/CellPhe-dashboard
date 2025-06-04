@@ -1,0 +1,3 @@
+[server]
+
+maxUploadSize = 2048 # Users can upload 2GB 

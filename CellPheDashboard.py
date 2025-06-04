@@ -1,17 +1,9 @@
 import time
 import os
-import pandas as pd
-import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
-import umap
+from pathlib import Path
+import shutil
 import warnings
-import cellphe
-import matplotlib.colors as mcolors
+
 from cellphe import (
     segment_images,
     track_images,
@@ -19,61 +11,23 @@ from cellphe import (
     import_data,
     time_series_features,
 )
-import platform
-from pathlib import Path
-import tempfile
-import shutil
-import sys
-
-#IS_APPLE_SILICON_MAC = sys.platform == "darwin" and platform.processor() == "arm"
-IS_APPLE_SILICON_MAC = True
-
-if not IS_APPLE_SILICON_MAC:
-    import tkinter as tk
-    from tkinter import filedialog
-    # Setup tkinter (only used for folder selector)
-    root = tk.Tk()
-    # Don't show hidden files/dirs in the file dialog
-    # Taken from: https://stackoverflow.com/a/54068050/1020006
-    try:
-        # call a dummy dialog with an impossible option to initialize the file
-        # dialog without really getting a dialog window; this will throw a
-        # TclError, so we need a try...except :
-        try:
-            root.tk.call("tk_getOpenFile", "-foobarbaz")
-        except tk.TclError:
-            pass
-        # now set the magic variables accordingly
-        root.tk.call("set", "::tk::dialog::file::showHiddenBtn", "1")
-        root.tk.call("set", "::tk::dialog::file::showHiddenVar", "0")
-    except:
-        pass
-    root.withdraw()
-
-    # Make folder picker dialog appear on top of other windows
-    root.wm_attributes("-topmost", 1)
+import cellphe
+import pandas as pd
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+import streamlit as st
+import umap
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
 EXCLUDE_ANALYSIS_COLUMNS = ["CellID", "FrameID", "ROI_filename"]
-
-
-def number_tifs_in_folder(folder: str):
-    """
-    Checks whether there is at least one TIF in the specified folder.
-
-    :param folder: The folder to check.
-    :return: A boolean where True indicates at least one TIF is in the
-    directory.
-    """
-    contents = [
-        x
-        for x in os.listdir(image_folder)
-        if os.path.isfile(os.path.join(image_folder, x))
-    ]
-    extensions = [os.path.splitext(x)[1] for x in contents]
-    return sum(x == ".tif" for x in extensions)
+ARCHIVE_FN = "outputs.zip"
 
 
 # Function to assign feature categories based on substrings in the feature names
@@ -114,90 +68,123 @@ def assign_color(feature, colour_mapping):
 
 
 def process_images(
-    image_folder,
+    raw_images,
     framerate=0.0028,
+    min_frames=0,
     keep_masks=False,
     keep_rois=False,
     keep_trackmate_features=False,
     keep_cellphe_frame_features=False,
-    cellpose_model='cyto'
+    cellpose_model='cyto3'
 ):
     """
     Process a folder of images to extract cell features and time series features.
 
     Parameters:
-    - image_folder: str, path to the folder containing images
+    - raw_images: list[str], List of uploaded image paths
     - framerate: float, frame rate for time series analysis (default: 0.0028)
 
     Returns:
     - tsvariables: DataFrame, extracted time series features (if applicable)
     """
     # Step 1: Define paths
-    out_dir = Path(image_folder).parent.absolute()
-    with tempfile.TemporaryDirectory() as masks_folder:
-        with tempfile.NamedTemporaryFile() as rois_archive:
-            with tempfile.NamedTemporaryFile() as tracked_csv_fp:
+    out_dir = "outputs"
+    image_folder = "images"
+    masks_folder = os.path.join(out_dir, "masks")
+    rois_archive = os.path.join(out_dir, "rois.zip")
+    trackmate_csv = os.path.join(out_dir, "trackmate.csv")
+    frame_features_csv = os.path.join(out_dir, "frame_features.csv")
+    ts_features_csv = os.path.join(out_dir, "time_series_features.csv")
+    Path(masks_folder).mkdir(parents=True, exist_ok=True)
+    Path(image_folder).mkdir(exist_ok=True)
 
-                # Step 2: Segment images
-                st.write("Segmenting cells...")
-                segment_images(image_folder, masks_folder, cellpose_model)
-                if keep_masks:
-                    shutil.make_archive(
-                        os.path.join(out_dir, "masks"), "zip", masks_folder
-                    )
-                st.success("Segmentation completed.")
+    # Write images to folder - unnecesary file IO but CellPhe requires
+    # images to be on disk, not in memory
+    for file in raw_images:
+        with open(os.path.join(image_folder, file.name), 'wb') as outfile:
+            outfile.write(file.getvalue())
 
-                # Step 3: Track images
-                st.write("Tracking cells...")
-                track_images(masks_folder, tracked_csv_fp.name,
-                             rois_archive.name)
-                if keep_rois:
-                    shutil.copy(
-                        rois_archive.name,
-                        os.path.join(out_dir, "rois.zip"),
-                    )
-                if keep_trackmate_features:
-                    shutil.copy(
-                        tracked_csv_fp.name,
-                        os.path.join(out_dir, "trackmate_features.csv"),
-                    )
-                st.success("Tracking completed.")
+    # Step 2: Segment images
+    overall_bar = st.progress(0.2, text="Segmenting")
+    try:
+        # TODO iterate here so can add a second progress bar, as this is a time
+        # consuming operation
+        if cellpose_model in ('cyto', 'cyto2', 'cyto3'):
+            cellpose_params = {'model_type': cellpose_model}
+        else:
+            # Currently can't get here, but this will be used to implement
+            # custom models
+            cellpose_params = {}  # to appease linter
+        segment_images(
+            image_folder,
+            masks_folder,
+            model_params=cellpose_params
+        )
+    except:
+        st.write("An unexpected error occurred during segmentation")
+        overall_bar.empty()
+        return
 
-                # Step 4: Import tracked data
-                feature_table = import_data(tracked_csv_fp.name,
-                                            "Trackmate_auto", 10)
+    # Step 3: Track images
+    overall_bar.progress(0.4, text="Tracking")
+    try:
+        track_images(masks_folder, trackmate_csv, rois_archive)
+    except:
+        st.write("An unexpected error occurred during tracking")
+        overall_bar.empty()
+        return
 
-                # Step 5: Extract features
-                st.write("Extracting CellPhe features...")
-                new_features = cell_features(
-                    feature_table, rois_archive.name, image_folder, framerate=framerate
-                )
-                if keep_cellphe_frame_features:
-                    new_features.to_csv(
-                        os.path.join(
-                            out_dir,
-                            os.path.basename(image_folder) + "_frame_features.csv",
-                        ),
-                        index=False,
-                    )
-                st.success("CellPhe feature extraction completed.")
+    # Step 4: Import tracked data
+    try:
+        feature_table = import_data(trackmate_csv, "Trackmate_auto", min_frames)
+    except:
+        st.write("Unable to import tracked data")
+        overall_bar.empty()
+        return
 
-                # Step 6: Extract time series features
-                st.write(
-                    "Extracting time series features..."
-                )
-                # Extract time series features
-                tsvariables = time_series_features(new_features)
+    if feature_table.shape[0] == 0:
+        st.write("No cells found")
+        overall_bar.empty()
+        return
 
-                # Save the new features to a CSV file
-                features_csv = os.path.join(
-                    out_dir,
-                    os.path.basename(image_folder) + "_timeseries_features.csv",
-                )
-                tsvariables.to_csv(features_csv, index=False)
-                st.success(
-                    f"Time series feature extraction completed. CSV saved as: {features_csv}"
-                )
+    # Step 5: Extract features
+    overall_bar.progress(0.6, text="Extracting frame features")
+    try:
+        frame_features = cell_features(
+            feature_table, rois_archive, image_folder, framerate=framerate
+        )
+    except:
+        st.write("An error occured while extracting the frame level features")
+        overall_bar.empty()
+        return
+
+    # Step 6: Extract time series features
+    overall_bar.progress(0.8, text="Extracting temporal features")
+    # Extract time series features
+    try:
+        tsvariables = time_series_features(frame_features)
+    except:
+        st.write("An error occured while extracting the temporal features, NB: generally at least 20 frames are needed for robust calculation")
+        overall_bar.empty()
+        return
+
+    # Save the new features to a CSV file
+    tsvariables.to_csv(ts_features_csv, index=False)
+    overall_bar.progress(1, text="Processing complete")
+    time.sleep(1)
+
+    overall_bar.empty()
+
+    if not keep_masks:
+        shutil.rmtree(masks_folder)
+    if not keep_rois:
+        os.remove(rois_archive)
+    if not keep_trackmate_features:
+        os.remove(trackmate_csv)
+    if keep_cellphe_frame_features:
+        frame_features.to_csv(frame_features_csv, index=False)
+
+    shutil.make_archive("outputs", "zip", "outputs")
 
     return tsvariables
 
@@ -405,11 +392,6 @@ tab1, tab2, tab3 = st.tabs(
     ["Image Processing", "Single Population", "Multiple Populations"]
 )
 
-if "image_folder" not in st.session_state:
-    image_folder = " "
-else:
-    image_folder = st.session_state.image_folder
-
 # Tab 1: Image Processing
 with tab1:
     st.markdown("# Image Processing")
@@ -430,55 +412,65 @@ with tab1:
                 it could be due to this.
                 """
     )
-    col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
-    with col1:
-        if not IS_APPLE_SILICON_MAC:
-            clicked = st.button("Select image folder")
-        else:
-            st.text_input("Image folder", key="image_folder", value=" ")
-            clicked = False
-    with col2:
-        st.markdown(f"Selected folder: `{image_folder}`")
-    if clicked:
-        st.session_state.image_folder = filedialog.askdirectory(master=root)
-        st.rerun()
+    raw_images = st.file_uploader(
+        "Upload images",
+        type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
+        accept_multiple_files=True
+     )
 
     # Button to start processing
-    if image_folder != " ":
+    if len(raw_images) > 0:
         # Validate that the folder contains images
-        if (n_tifs := number_tifs_in_folder(image_folder)) == 0:
-            st.warning("No TIFs found in folder")
-        else:
-            st.info(f"Found {n_tifs} images.")
-            save_rois = st.toggle("Keep ROIs?", value=True)
-            save_masks = st.toggle("Keep CellPose masks?", value=False)
-            save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
-            save_trackmate_features = st.toggle("Keep TrackMate features?", value=False)
-            frame_rate = st.number_input(
-                "Time period between frames (only used to provide a meaningful unit for cell velocity)",
-                min_value=0.0,
-                max_value=10.0,
-                value=5.0,
+        st.info(f"Uploaded {len(raw_images)} images.")
+        save_rois = st.toggle("Keep ROIs?", value=True)
+        save_masks = st.toggle("Keep CellPose masks?", value=True)
+        save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
+        save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
+
+        # Ideally would have 20 frames per cell minimum, otherwise time-series
+        # features struggle to estimate
+        min_frames = st.number_input(
+            "Minimum number of frames a cell must be in to be kept",
+            min_value=0,
+            max_value=len(raw_images),
+            value=min(len(raw_images), 20),
+        )
+        frame_rate = st.number_input(
+            "Time period between frames (only used to provide a meaningful unit for cell velocity)",
+            min_value=0.0,
+            max_value=10.0,
+            value=5.0,
+        )
+        cellpose_model = st.selectbox(
+            "Choose a cellpose segmentation model",
+            ("cyto3", "cyto2", "cyto"),
+        )
+
+        if st.button("Process Images"):
+            # Call the process_images function (Assuming it is defined elsewhere in your code)
+            ts_variables = process_images(
+                raw_images,
+                keep_masks=save_masks,
+                keep_rois=save_rois,
+                keep_trackmate_features=save_trackmate_features,
+                keep_cellphe_frame_features=save_frame_features,
+                min_frames=min_frames,
+                framerate=frame_rate,
+                cellpose_model=cellpose_model
             )
-            cellpose_model = st.text_input("CellPose model", value="cyto")
 
-            if st.button("Process Images"):
-                st.write(f"Processing images from folder: {image_folder}")
-                # Call the process_images function (Assuming it is defined elsewhere in your code)
-                ts_variables = process_images(
-                    image_folder,
-                    keep_masks=save_masks,
-                    keep_rois=save_rois,
-                    keep_trackmate_features=save_trackmate_features,
-                    keep_cellphe_frame_features=save_frame_features,
-                    framerate=frame_rate,
-                    cellpose_model=cellpose_model
-                )
-
-                if not ts_variables.empty:
-                    st.write("Time series feature extraction completed.")
-                else:
-                    st.write("No time series features extracted.")
+            if ts_variables is None or ts_variables.empty:
+                st.write("No time series features extracted.")
+            else:
+                st.write("Time series feature extraction completed.")
+                output_fn = f"cellphe_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+                with open(ARCHIVE_FN, "rb") as file:
+                    st.download_button(
+                        label="Download features",
+                        data=file,
+                        file_name=output_fn,
+                        mime="application/zip",
+                    )
 
 # Tab 2: Single Population Characterisation
 with tab2:
