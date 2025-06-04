@@ -75,7 +75,7 @@ def process_images(
     keep_rois=False,
     keep_trackmate_features=False,
     keep_cellphe_frame_features=False,
-    cellpose_model='cyto'
+    cellpose_model='cyto3'
 ):
     """
     Process a folder of images to extract cell features and time series features.
@@ -106,14 +106,19 @@ def process_images(
 
     # Step 2: Segment images
     overall_bar = st.progress(0.2, text="Segmenting")
-    # TODO update to allow user to select cellpose model
     try:
         # TODO iterate here so can add a second progress bar, as this is a time
         # consuming operation
+        if cellpose_model in ('cyto', 'cyto2', 'cyto3'):
+            cellpose_params = {'model_type': cellpose_model}
+        else:
+            # Currently can't get here, but this will be used to implement
+            # custom models
+            cellpose_params = {}  # to appease linter
         segment_images(
             image_folder,
             masks_folder,
-            model_params={'model_type': 'cyto3'}
+            model_params=cellpose_params
         )
     except:
         st.write("An unexpected error occurred during segmentation")
@@ -387,11 +392,6 @@ tab1, tab2, tab3 = st.tabs(
     ["Image Processing", "Single Population", "Multiple Populations"]
 )
 
-if "image_folder" not in st.session_state:
-    image_folder = " "
-else:
-    image_folder = st.session_state.image_folder
-
 # Tab 1: Image Processing
 with tab1:
     st.markdown("# Image Processing")
@@ -423,9 +423,9 @@ with tab1:
         # Validate that the folder contains images
         st.info(f"Uploaded {len(raw_images)} images.")
         save_rois = st.toggle("Keep ROIs?", value=True)
-        save_masks = st.toggle("Keep CellPose masks?", value=False)
+        save_masks = st.toggle("Keep CellPose masks?", value=True)
         save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
-        save_trackmate_features = st.toggle("Keep TrackMate features?", value=False)
+        save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
 
         # Ideally would have 20 frames per cell minimum, otherwise time-series
         # features struggle to estimate
@@ -441,7 +441,10 @@ with tab1:
             max_value=10.0,
             value=5.0,
         )
-        cellpose_model = st.text_input("CellPose model", value="cyto")
+        cellpose_model = st.selectbox(
+            "Choose a cellpose segmentation model",
+            ("cyto3", "cyto2", "cyto"),
+        )
 
         if st.button("Process Images"):
             # Call the process_images function (Assuming it is defined elsewhere in your code)
