@@ -88,6 +88,7 @@ def assign_color(feature, colour_mapping):
 def process_images(
     raw_images,
     framerate=0.0028,
+    min_frames=0,
     keep_masks=False,
     keep_rois=False,
     keep_trackmate_features=False,
@@ -119,24 +120,35 @@ def process_images(
     # images to be on disk, not in memory
     for file in raw_images:
         with open(os.path.join(image_folder, file.name), 'wb') as outfile:
-            print(f"Writing {file.name} to {os.path.join(image_folder, file.name)}")
             outfile.write(file.getvalue())
 
     # Step 2: Segment images
-    overall_bar = st.progress(0, text="Segmenting")
+    overall_bar = st.progress(0.2, text="Segmenting")
     # TODO update to allow user to select cellpose model
-    segment_images(
-        image_folder,
-        masks_folder,
-        model_params={'model_type': 'cyto3'}
-    )
+    try:
+        # TODO iterate here so can add a second progress bar, as this is a time
+        # consuming operation
+        segment_images(
+            image_folder,
+            masks_folder,
+            model_params={'model_type': 'cyto3'}
+        )
+    except:
+        st.write("An unexpected error occurred during segmentation")
+        overall_bar.empty()
+        return
     if keep_masks:
         pass
         # TODO implement
 
     # Step 3: Track images
-    overall_bar.progress(0.25, text="Tracking")
-    track_images(masks_folder, trackmate_csv, rois_archive)
+    overall_bar.progress(0.4, text="Tracking")
+    try:
+        track_images(masks_folder, trackmate_csv, rois_archive)
+    except:
+        st.write("An unexpected error occurred during tracking")
+        overall_bar.empty()
+        return
     if keep_rois:
         # TODO implement
         pass
@@ -146,13 +158,28 @@ def process_images(
         pass
 
     # Step 4: Import tracked data
-    feature_table = import_data(trackmate_csv, "Trackmate_auto", 10)
+    try:
+        feature_table = import_data(trackmate_csv, "Trackmate_auto", min_frames)
+    except:
+        st.write("Unable to import tracked data")
+        overall_bar.empty()
+        return
+
+    if feature_table.shape[0] == 0:
+        st.write("No cells found")
+        overall_bar.empty()
+        return
 
     # Step 5: Extract features
-    overall_bar.progress(0.5, text="Extracting frame features")
-    new_features = cell_features(
-        feature_table, rois_archive.name, image_folder, framerate=framerate
-    )
+    overall_bar.progress(0.6, text="Extracting frame features")
+    try:
+        new_features = cell_features(
+            feature_table, rois_archive, image_folder, framerate=framerate
+        )
+    except:
+        st.write("An error occured while extracting the frame level features")
+        overall_bar.empty()
+        return
     if keep_cellphe_frame_features:
         pass
         # TODO
@@ -165,14 +192,21 @@ def process_images(
         #)
 
     # Step 6: Extract time series features
-    overall_bar.progress(0.75, text="Extracting temporal features")
+    overall_bar.progress(0.8, text="Extracting temporal features")
     # Extract time series features
-    tsvariables = time_series_features(new_features)
+    try:
+        tsvariables = time_series_features(new_features)
+    except:
+        st.write("An error occured while extracting the temporal features, NB: generally at least 20 frames are needed for robust calculation")
+        overall_bar.empty()
+        return
 
     # Save the new features to a CSV file
     tsvariables.to_csv(ts_features_csv, index=False)
     overall_bar.progress(1, text="Processing complete")
+    time.sleep(1)
 
+    overall_bar.empty()
     return tsvariables
 
 
@@ -418,6 +452,15 @@ with tab1:
         save_masks = st.toggle("Keep CellPose masks?", value=False)
         save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
         save_trackmate_features = st.toggle("Keep TrackMate features?", value=False)
+
+        # Ideally would have 20 frames per cell minimum, otherwise time-series
+        # features struggle to estimate
+        min_frames = st.number_input(
+            "Minimum number of frames a cell must be in to be kept",
+            min_value=0,
+            max_value=len(raw_images),
+            value=min(len(raw_images), 20),
+        )
         frame_rate = st.number_input(
             "Time period between frames (only used to provide a meaningful unit for cell velocity)",
             min_value=0.0,
@@ -427,7 +470,6 @@ with tab1:
         cellpose_model = st.text_input("CellPose model", value="cyto")
 
         if st.button("Process Images"):
-            st.write(f"Processing images from folder: {image_folder}")
             # Call the process_images function (Assuming it is defined elsewhere in your code)
             ts_variables = process_images(
                 raw_images,
@@ -435,14 +477,17 @@ with tab1:
                 keep_rois=save_rois,
                 keep_trackmate_features=save_trackmate_features,
                 keep_cellphe_frame_features=save_frame_features,
+                min_frames=min_frames,
                 framerate=frame_rate,
                 cellpose_model=cellpose_model
             )
 
-            if not ts_variables.empty:
-                st.write("Time series feature extraction completed.")
-            else:
+            # TODO add ability to download
+
+            if ts_variables is None or ts_variables.empty:
                 st.write("No time series features extracted.")
+            else:
+                st.write("Time series feature extraction completed.")
 
 # Tab 2: Single Population Characterisation
 with tab2:
