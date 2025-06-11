@@ -103,7 +103,10 @@ def process_images(
     keep_rois=False,
     keep_trackmate_features=False,
     keep_cellphe_frame_features=False,
-    cellpose_model='cyto3'
+    cellpose_model='cyto3',
+    uploaded_masks=None,
+    uploaded_roi=None,
+    uploaded_trackmate_csv=None
 ):
     """
     Process a folder of images to extract cell features and time series features.
@@ -126,44 +129,62 @@ def process_images(
     Path(masks_folder).mkdir(parents=True, exist_ok=True)
     Path(image_folder).mkdir(exist_ok=True)
 
-    # Write images to folder - unnecesary file IO but CellPhe requires
+    # Write uploaded files to disk - unnecesary file IO but CellPhe requires
     # images to be on disk, not in memory
     for file in raw_images:
         with open(os.path.join(image_folder, file.name), 'wb') as outfile:
             outfile.write(file.getvalue())
 
+    if len(uploaded_masks) > 0:
+        for file in uploaded_masks:
+            with open(os.path.join(masks_folder, file.name), 'wb') as outfile:
+                outfile.write(file.getvalue())
+
+    if uploaded_roi is not None:
+        with open(rois_archive, 'wb') as outfile:
+            outfile.write(uploaded_roi.getvalue())
+
+    if uploaded_trackmate_csv is not None:
+        with open(trackmate_csv, 'wb') as outfile:
+            outfile.write(uploaded_trackmate_csv.getvalue())
+
+    have_masks = len(uploaded_masks) > 0
+    have_tracking = uploaded_roi is not None and uploaded_trackmate_csv is not None
+
+
     # Step 2: Segment images
     overall_bar = st.progress(0.2, text="Segmenting")
-    try:
-        if cellpose_model == 'cyto3':
-            cellpose_params = {'model_type': cellpose_model}
-        else:
-            if cellpose_model == 'ioLight':
-                model_path = "cellpose_models/CP_20250421_ioLight_21imgs"
-            elif cellpose_model == 'LiveCyte Brightfield':
-                model_path = "cellpose_models/CP_20250502_Livcyto_25imgs"
+    if not have_masks and not have_tracking:
+        try:
+            if cellpose_model == 'cyto3':
+                cellpose_params = {'model_type': cellpose_model}
             else:
-                model_path = ''  # appease linter, code can't get here
-            cellpose_params = {'pretrained_model': model_path}
-        segment_images_with_progress_bar(
-            image_folder,
-            masks_folder,
-            model_params=cellpose_params
-        )
-
-    except Exception as e:
-        st.write(f"An unexpected error occurred during segmentation: {e}")
-        overall_bar.empty()
-        return
+                if cellpose_model == 'ioLight':
+                    model_path = "cellpose_models/CP_20250421_ioLight_21imgs"
+                elif cellpose_model == 'LiveCyte Brightfield':
+                    model_path = "cellpose_models/CP_20250502_Livcyto_25imgs"
+                else:
+                    model_path = ''  # appease linter, code can't get here
+                cellpose_params = {'pretrained_model': model_path}
+            segment_images_with_progress_bar(
+                image_folder,
+                masks_folder,
+                model_params=cellpose_params
+            )
+        except Exception as e:
+            st.write(f"An unexpected error occurred during segmentation: {e}")
+            overall_bar.empty()
+            return
 
     # Step 3: Track images
     overall_bar.progress(0.4, text="Tracking")
-    try:
-        track_images(masks_folder, trackmate_csv, rois_archive)
-    except Exception as e:
-        st.write(f"An unexpected error occurred during tracking: {e}")
-        overall_bar.empty()
-        return
+    if not have_tracking:
+        try:
+            track_images(masks_folder, trackmate_csv, rois_archive)
+        except Exception as e:
+            st.write(f"An unexpected error occurred during tracking: {e}")
+            overall_bar.empty()
+            return
 
     # Step 4: Import tracked data
     try:
@@ -476,6 +497,21 @@ with tab1:
             max_value=10.0,
             value=5.0,
         )
+        uploaded_masks = st.file_uploader(
+            "Upload previously segmented masks",
+            type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
+            accept_multiple_files=True
+         )
+        uploaded_roi = st.file_uploader(
+            "Upload previously tracked ROI archive",
+            type=['zip'],
+            accept_multiple_files=False
+         )
+        uploaded_trackmate_csv = st.file_uploader(
+            "Upload previously run trackmate CSV",
+            type=['csv'],
+            accept_multiple_files=False
+         )
 
         if st.button("Process Images"):
             # Call the process_images function (Assuming it is defined elsewhere in your code)
@@ -487,7 +523,10 @@ with tab1:
                 keep_cellphe_frame_features=save_frame_features,
                 min_frames=min_frames,
                 framerate=frame_rate,
-                cellpose_model=cellpose_model
+                cellpose_model=cellpose_model,
+                uploaded_masks=uploaded_masks,
+                uploaded_roi=uploaded_roi,
+                uploaded_trackmate_csv=uploaded_trackmate_csv
             )
 
             if ts_variables is None or ts_variables.empty:

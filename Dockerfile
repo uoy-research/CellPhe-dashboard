@@ -33,19 +33,19 @@ COPY --from=builder /root/.local /root/.local
 
 WORKDIR /app
 
-# Copy application code
-COPY CellPheDashboard.py .
-COPY cellpose_models/ ./cellpose_models/
-COPY setup_imagej.py .
-
 # Install Java dependencies for ImageJ
 # Easier to do this via pyimagej rather than setting up a maven project
 # NB: this could be done in builder but then would need to install maven in both
+COPY setup_imagej.py .
 RUN python setup_imagej.py
 
 # Download cyto3 CellPose model
+COPY cellpose_models/ ./cellpose_models/
 RUN mkdir -p ~/.cellpose/models
 RUN wget https://www.cellpose.org/models/cyto3 -O ~/.cellpose/models/cyto3
+
+# Copy application code
+COPY CellPheDashboard.py .
 
 EXPOSE 8501
 
