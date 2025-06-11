@@ -17,16 +17,31 @@ RUN pip install --no-compile --no-cache-dir --user -r requirements.txt
 FROM python:3.12-slim AS app
 RUN apt-get update && apt-get install -y \
     default-jdk \
+    wget \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+
+# Install Maven
+ENV MAVEN_HOME=/opt/maven
+ENV PATH=$MAVEN_HOME/bin:$PATH
+ENV MAVEN_VERSION=3.9.10
+RUN wget https://dlcdn.apache.org/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz -O /tmp/maven.tar.gz && \
+    tar xvf /tmp/maven.tar.gz -C /opt && \
+    mv /opt/apache-maven-$MAVEN_VERSION $MAVEN_HOME
+
+# Copy python dependencies over from builder
 COPY --from=builder /root/.local /root/.local
+
+WORKDIR /app
 
 # Copy application code
 COPY CellPheDashboard.py .
 COPY cellpose_models/ ./cellpose_models/
+COPY setup_imagej.py .
 
-
-# TODO bundle maven package
+# Install Java dependencies for ImageJ
+# Easier to do this via pyimagej rather than setting up a maven project
+# NB: this could be done in builder but then would need to install maven in both
+RUN python setup_imagej.py
 
 EXPOSE 8501
 
