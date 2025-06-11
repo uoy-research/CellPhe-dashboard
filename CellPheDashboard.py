@@ -135,7 +135,7 @@ def process_images(
     # Step 2: Segment images
     overall_bar = st.progress(0.2, text="Segmenting")
     try:
-        if cellpose_model in ('cyto', 'cyto2', 'cyto3'):
+        if cellpose_model == 'cyto3':
             cellpose_params = {'model_type': cellpose_model}
         else:
             if cellpose_model == 'ioLight':
@@ -460,7 +460,7 @@ with tab1:
 
         cellpose_model = st.selectbox(
             "Choose a cellpose segmentation model",
-            ("cyto3", "cyto2", "cyto", "ioLight", "LiveCyte Brightfield"),
+            ("cyto3", "ioLight", "LiveCyte Brightfield"),
         )
         # Ideally would have 20 frames per cell minimum, otherwise time-series
         # features struggle to estimate

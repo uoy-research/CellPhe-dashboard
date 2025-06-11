@@ -43,6 +43,10 @@ COPY setup_imagej.py .
 # NB: this could be done in builder but then would need to install maven in both
 RUN python setup_imagej.py
 
+# Download cyto3 CellPose model
+RUN mkdir -p ~/.cellpose/models
+RUN wget https://www.cellpose.org/models/cyto3 -O ~/.cellpose/models/cyto3
+
 EXPOSE 8501
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
