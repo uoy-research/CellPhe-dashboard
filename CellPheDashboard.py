@@ -5,21 +5,23 @@ import shutil
 import warnings
 
 from cellphe import (
-    segment_images,
     track_images,
     cell_features,
     import_data,
     time_series_features,
 )
 import cellphe
+from cellpose import models
 import pandas as pd
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
+from skimage import io
 import streamlit as st
 import umap
 
@@ -28,6 +30,32 @@ warnings.filterwarnings("ignore")
 
 EXCLUDE_ANALYSIS_COLUMNS = ["CellID", "FrameID", "ROI_filename"]
 ARCHIVE_FN = "outputs.zip"
+
+
+def segment_images_with_progress_bar(
+    image_folder,
+    masks_folder,
+    model_params={'model_type': 'cyto3'},
+    eval_params = {}
+):
+    """
+    Local version of cellphe's `segment_images`.
+    Does the same job but with 2 modifications:
+         - Uses CellposeModel rather than Cellpose, which allows for custom
+             cellpose models
+         - Updates a progress bar after each image is segmented
+    """
+    model = models.CellposeModel(**model_params)
+    image_fns = sorted(os.listdir(image_folder))
+    n_images = len(image_fns)
+    segmenting_bar = st.progress(0, text=f"Image {0}/{n_images}")
+    for i, fn in enumerate(image_fns):
+        image = np.array(Image.open(os.path.join(image_folder, fn)))
+        masks = model.eval(image, **eval_params)[0]
+        segmenting_bar.progress((i+1)/n_images, text=f"Image {i+1}/{n_images}")
+        io.imsave(os.path.join(masks_folder, fn), masks.astype("uint16"))  # Assuming masks are uint16
+    time.sleep(2)
+    segmenting_bar.empty()
 
 
 # Function to assign feature categories based on substrings in the feature names
@@ -107,21 +135,24 @@ def process_images(
     # Step 2: Segment images
     overall_bar = st.progress(0.2, text="Segmenting")
     try:
-        # TODO iterate here so can add a second progress bar, as this is a time
-        # consuming operation
         if cellpose_model in ('cyto', 'cyto2', 'cyto3'):
             cellpose_params = {'model_type': cellpose_model}
         else:
-            # Currently can't get here, but this will be used to implement
-            # custom models
-            cellpose_params = {}  # to appease linter
-        segment_images(
+            if cellpose_model == 'ioLight':
+                model_path = "cellpose_models/CP_20250421_ioLight_21imgs"
+            elif cellpose_model == 'LiveCyte Brightfield':
+                model_path = "cellpose_models/CP_20250502_Livcyto_25imgs"
+            else:
+                model_path = ''  # appease linter, code can't get here
+            cellpose_params = {'pretrained_model': model_path}
+        segment_images_with_progress_bar(
             image_folder,
             masks_folder,
             model_params=cellpose_params
         )
-    except:
-        st.write("An unexpected error occurred during segmentation")
+
+    except Exception as e:
+        st.write(f"An unexpected error occurred during segmentation: {e}")
         overall_bar.empty()
         return
 
@@ -129,8 +160,8 @@ def process_images(
     overall_bar.progress(0.4, text="Tracking")
     try:
         track_images(masks_folder, trackmate_csv, rois_archive)
-    except:
-        st.write("An unexpected error occurred during tracking")
+    except Exception as e:
+        st.write(f"An unexpected error occurred during tracking: {e}")
         overall_bar.empty()
         return
 
@@ -171,7 +202,7 @@ def process_images(
     # Save the new features to a CSV file
     tsvariables.to_csv(ts_features_csv, index=False)
     overall_bar.progress(1, text="Processing complete")
-    time.sleep(1)
+    time.sleep(2)
 
     overall_bar.empty()
 
@@ -427,6 +458,10 @@ with tab1:
         save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
         save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
 
+        cellpose_model = st.selectbox(
+            "Choose a cellpose segmentation model",
+            ("cyto3", "cyto2", "cyto", "ioLight", "LiveCyte Brightfield"),
+        )
         # Ideally would have 20 frames per cell minimum, otherwise time-series
         # features struggle to estimate
         min_frames = st.number_input(
@@ -440,10 +475,6 @@ with tab1:
             min_value=0.0,
             max_value=10.0,
             value=5.0,
-        )
-        cellpose_model = st.selectbox(
-            "Choose a cellpose segmentation model",
-            ("cyto3", "cyto2", "cyto"),
         )
 
         if st.button("Process Images"):

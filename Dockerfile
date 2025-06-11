@@ -13,9 +13,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-compile --no-cache-dir --user -r requirements.txt
 
-# Copy application code
-COPY CellPheDashboard.py .
-
 # Application image
 FROM python:3.12-slim AS app
 RUN apt-get update && apt-get install -y \
@@ -23,7 +20,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /root/.local /root/.local
-COPY --from=builder /app/CellPheDashboard.py /app
+
+# Copy application code
+COPY CellPheDashboard.py .
+COPY cellpose_models/ ./cellpose_models/
+
 
 # TODO bundle maven package
 
