@@ -464,6 +464,7 @@ with tab1:
                 it could be due to this.
                 """
     )
+    st.markdown("## Upload raw images")
     raw_images = st.file_uploader(
         "Upload images",
         type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
@@ -474,29 +475,34 @@ with tab1:
     if len(raw_images) > 0:
         # Validate that the folder contains images
         st.info(f"Uploaded {len(raw_images)} images.")
-        save_rois = st.toggle("Keep ROIs?", value=True)
-        save_masks = st.toggle("Keep CellPose masks?", value=True)
-        save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
-        save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
-
-        cellpose_model = st.selectbox(
-            "Choose a cellpose segmentation model",
-            ("cyto3", "ioLight", "LiveCyte Brightfield"),
-        )
-        # Ideally would have 20 frames per cell minimum, otherwise time-series
-        # features struggle to estimate
-        min_frames = st.number_input(
-            "Minimum number of frames a cell must be in to be kept",
-            min_value=0,
-            max_value=len(raw_images),
-            value=min(len(raw_images), 20),
-        )
-        frame_rate = st.number_input(
-            "Time period between frames (only used to provide a meaningful unit for cell velocity)",
-            min_value=0.0,
-            max_value=10.0,
-            value=5.0,
-        )
+        st.markdown("## Parameters")
+        col1, col2 = st.columns(2, vertical_alignment="center")
+        with col1:
+            save_rois = st.toggle("Keep ROIs?", value=True)
+            save_masks = st.toggle("Keep CellPose masks?", value=True)
+            save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
+            save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
+        with col2:
+            cellpose_model = st.selectbox(
+                "Choose a cellpose segmentation model",
+                ("cyto3", "ioLight", "LiveCyte Brightfield"),
+            )
+            # Ideally would have 20 frames per cell minimum, otherwise time-series
+            # features struggle to estimate
+            min_frames = st.number_input(
+                "Minimum number of frames a cell must be in to be kept",
+                min_value=0,
+                max_value=len(raw_images),
+                value=min(len(raw_images), 20),
+            )
+            frame_rate = st.number_input(
+                "Time period between frames (only used to provide a meaningful unit for cell velocity)",
+                min_value=0.0,
+                max_value=10.0,
+                value=5.0,
+            )
+        st.markdown("## Resuming previous processing")
+        st.write("Upload previously calculated intermediate files (masks, ROIs, trackmate feature to skip out processing steps. NB: ensure that the intermediate files are for the same raw images!")
         uploaded_masks = st.file_uploader(
             "Upload previously segmented masks",
             type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
@@ -513,6 +519,7 @@ with tab1:
             accept_multiple_files=False
          )
 
+        st.markdown("## Run")
         if st.button("Process Images"):
             # Call the process_images function (Assuming it is defined elsewhere in your code)
             ts_variables = process_images(
