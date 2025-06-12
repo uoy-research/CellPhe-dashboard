@@ -331,7 +331,8 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         # Plot PCA scores
         plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
         sns.scatterplot(
-            data=pca_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100
+            data=pca_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100,
+            alpha=0.7
         )
 
         plt.title("PCA")
@@ -353,7 +354,9 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         # Plot tSNE scores
         plt.figure(figsize=(6, 6))  # Set equal size for the tSNE plot
         sns.scatterplot(
-            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE, s=100
+            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE,
+            s=100,
+            alpha=0.7
         )
 
         plt.title("tSNE")
@@ -375,7 +378,9 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         # Plot UMAP scores
         plt.figure(figsize=(6, 6))  # Set equal size for the UMAP plot
         sns.scatterplot(
-            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE, s=100
+            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE,
+            s=100,
+            alpha=0.7
         )
 
         plt.title("UMAP")
