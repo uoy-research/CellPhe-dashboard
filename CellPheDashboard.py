@@ -30,6 +30,9 @@ warnings.filterwarnings("ignore")
 
 EXCLUDE_ANALYSIS_COLUMNS = ["CellID", "FrameID", "ROI_filename"]
 ARCHIVE_FN = "outputs.zip"
+# Form palette as all bold colours then all pastels, rather than the default
+# which is to interleave them
+PALETTE = [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 0] + [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 1]
 
 
 def segment_images_with_progress_bar(
@@ -328,7 +331,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         # Plot PCA scores
         plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
         sns.scatterplot(
-            data=pca_df, x="PC1", y="PC2", hue="Group", palette="tab10", s=100
+            data=pca_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100
         )
 
         plt.title("PCA")
@@ -348,9 +351,9 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         tsne_df["Group"] = labels_cleaned
 
         # Plot tSNE scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
+        plt.figure(figsize=(6, 6))  # Set equal size for the tSNE plot
         sns.scatterplot(
-            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
+            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE, s=100
         )
 
         plt.title("tSNE")
@@ -372,7 +375,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
         # Plot UMAP scores
         plt.figure(figsize=(6, 6))  # Set equal size for the UMAP plot
         sns.scatterplot(
-            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
+            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE, s=100
         )
 
         plt.title("UMAP")
@@ -398,8 +401,8 @@ def plot_boxplot_with_points(data, feature, labels):
     # Create a new DataFrame for plotting
     plot_data = pd.DataFrame({"Feature": data[feature], "Group": labels})
 
-    # Get color palette from 'tab10'
-    palette = sns.color_palette("tab10")
+    # Get color palette from 'tab20'
+    palette = sns.color_palette(PALETTE)
 
     # Create the box plot without transparency first
     boxplot = sns.boxplot(
