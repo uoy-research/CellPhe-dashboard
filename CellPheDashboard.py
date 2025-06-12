@@ -256,52 +256,6 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     - labels: List of group labels corresponding to the data
     """
 
-    colour_mapping = {
-        "size": "black",  # For size-related features
-        "shape": "mediumturquoise",  # For shape-related features
-        "texture": "mediumpurple",  # For texture-related features (example)
-        "movement": "cornflowerblue",  # For movement-related features
-        "density": "hotpink",  # For density-related features
-    }
-
-    # Apply color assignment to the DataFrame based on the feature names
-    sep_df["Colour"] = sep_df["Feature"].apply(
-        assign_color, colour_mapping=colour_mapping
-    )
-
-    # Create two columns for side-by-side plotting
-    col1, col2 = st.columns(2, vertical_alignment="center")
-    col3, col4 = st.columns(2, vertical_alignment="center")
-
-    # Column 1: Separation Scores
-    with col1:
-        plt.figure(figsize=(6, 6))  # Set equal size for the separation scores plot
-        sns.barplot(
-            data=sep_df, x="Feature", y="Separation", palette=sep_df["Colour"].tolist()
-        )  # Convert to list
-        plt.title("Separation Scores for Each Feature")
-        plt.xlabel("Feature Names")
-        plt.ylabel("Separation Score")
-        plt.xticks(rotation=90)  # Rotate feature names for better visibility
-
-        # Creating a legend
-        handles = []
-        for label, color in colour_mapping.items():
-            handles.append(
-                plt.Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="w",
-                    label=label,
-                    markerfacecolor=color,
-                    markersize=10,
-                )
-            )
-        plt.legend(title="Feature Categories", handles=handles)
-
-        st.pyplot(plt.gcf())
-
     # Preprocess data for dimensionality reduction
     # Standardize the features
     scaler = StandardScaler()
@@ -318,77 +272,111 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     labels_cleaned = scaled_df["Group"].values
     scaled_data_cleaned = scaled_df[top_features].values
 
-    # Column 2: PCA Plot
-    with col2:
-        # Perform PCA on the cleaned, scaled data
-        pca = PCA(n_components=2)  # Use 2 principal components for visualization
-        pca_scores = pca.fit_transform(scaled_data_cleaned)
+    # Perform 3 types ofdimensionality reduction
+    pca_mod = PCA(n_components=2)  # Use 2 principal components for visualization
+    tsne_mod = TSNE(init="random", perplexity=3)
+    umap_mod = umap.UMAP()
+    pca_scores = pca_mod.fit_transform(scaled_data_cleaned)
+    tsne_scores = tsne_mod.fit_transform(scaled_data_cleaned)
+    umap_scores = umap_mod.fit_transform(scaled_data_cleaned)
 
-        # Create a DataFrame for PCA scores
-        pca_df = pd.DataFrame(pca_scores, columns=["PC1", "PC2"])
-        pca_df["Group"] = labels_cleaned
+    # Store results in a data frame
+    dim_red_df = pd.concat(
+        [
+            pd.DataFrame(pca_scores, columns=["PC1", "PC2"]),
+            pd.DataFrame(tsne_scores, columns=["tsne1", "tsne2"]),
+            pd.DataFrame(umap_scores, columns=["umap1", "umap2"])
+        ],
+        axis=1)
+    dim_red_df["Group"] = labels_cleaned
 
-        # Plot PCA scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
-        sns.scatterplot(
-            data=pca_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100,
-            alpha=0.7
+
+    colour_mapping = {
+        "size": "black",  # For size-related features
+        "shape": "mediumturquoise",  # For shape-related features
+        "texture": "mediumpurple",  # For texture-related features (example)
+        "movement": "cornflowerblue",  # For movement-related features
+        "density": "hotpink",  # For density-related features
+    }
+
+    # Apply color assignment to the DataFrame based on the feature names
+    sep_df["Colour"] = sep_df["Feature"].apply(
+        assign_color, colour_mapping=colour_mapping
+    )
+
+    # Create two columns for side-by-side plotting
+    fig = plt.figure(figsize=(14,16))
+    gs = fig.add_gridspec(3, 2, height_ratios=(1, 1, 0.1))
+    ax1 = fig.add_subplot(gs[0, 0])  # Separation
+    ax2 = fig.add_subplot(gs[0, 1])  # PCA
+    ax3 = fig.add_subplot(gs[1, 0])  # tSNE
+    ax4 = fig.add_subplot(gs[1, 1])  # UMAP
+    ax5 = fig.add_subplot(gs[2, :])  # Legend
+
+    # Top left: Separation Scores
+    sns.barplot(
+        data=sep_df, x="Feature", y="Separation",
+        palette=sep_df["Colour"].tolist(), ax=ax1
+    )  # Convert to list
+    ax1.set_title("Separation Scores for Each Feature")
+    ax1.set_xlabel("Feature Names")
+    ax1.set_ylabel("Separation Score")
+    ax1.set_xticks(ax1.get_xticks(), ax1.get_xticklabels(), rotation=90)  # Rotate feature names for better visibility
+
+    # Creating a legend
+    handles = []
+    for label, color in colour_mapping.items():
+        handles.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label=label,
+                markerfacecolor=color,
+                markersize=10,
+            )
         )
+    ax1.legend(title="Feature Categories", handles=handles)
 
-        plt.title("PCA")
-        plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.2f}% Variance)")
-        plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.2f}% Variance)")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
+    # Top right: PCA Plot
+    plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
+    sns.scatterplot(
+        data=dim_red_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100,
+        alpha=0.7, ax=ax2, legend=False
+    )
+    ax2.set_title("PCA")
+    ax2.set_xlabel(f"PC1 ({pca_mod.explained_variance_ratio_[0]*100:.2f}% Variance)")
+    ax2.set_ylabel(f"PC2 ({pca_mod.explained_variance_ratio_[1]*100:.2f}% Variance)")
 
-    # Column 3: tSNE Plot
-    with col3:
-        # Perform tSNE on the cleaned, scaled data
-        tsne_mod = TSNE(init="random", perplexity=3)
-        tsne_scores = tsne_mod.fit_transform(scaled_data_cleaned)
+    # Bottom lef: tSNE Plot
+    sns.scatterplot(
+        data=dim_red_df, x="tsne1", y="tsne2", hue="Group", palette=PALETTE,
+        s=100, ax=ax3, legend=False,
+        alpha=0.7
+    )
+    ax3.set_title("tSNE")
+    ax3.set_xlabel("")
+    ax3.set_ylabel("")
 
-        # Create a DataFrame for tSNE scores
-        tsne_df = pd.DataFrame(tsne_scores, columns=["Dim1", "Dim2"])
-        tsne_df["Group"] = labels_cleaned
+    # Bottom right: UMAP Plot
+    sns.scatterplot(
+        data=dim_red_df, x="umap1", y="umap2", hue="Group", palette=PALETTE,
+        s=100, ax=ax4, legend=True,
+        alpha=0.7
+    )
+    ax4.set_title("UMAP")
+    ax4.set_xlabel("")
+    ax4.set_ylabel("")
 
-        # Plot tSNE scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the tSNE plot
-        sns.scatterplot(
-            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE,
-            s=100,
-            alpha=0.7
-        )
+    # Bottom row: shared group legend
+    h, l = ax4.get_legend_handles_labels()
+    ax4.get_legend().remove()
+    ax5.legend(h, l, title="Group", borderaxespad=0, ncol=5, loc="center")
+    ax5.axis("off")
 
-        plt.title("tSNE")
-        plt.xlabel("")
-        plt.ylabel("")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
-
-    # Column 4: UMAP Plot
-    with col4:
-        # Perform UMAP on the cleaned, scaled data
-        umap_mod = umap.UMAP()
-        umap_scores = umap_mod.fit_transform(scaled_data_cleaned)
-
-        # Create a DataFrame for UMAP scores
-        umap_df = pd.DataFrame(umap_scores, columns=["Dim1", "Dim2"])
-        umap_df["Group"] = labels_cleaned
-
-        # Plot UMAP scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the UMAP plot
-        sns.scatterplot(
-            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette=PALETTE,
-            s=100,
-            alpha=0.7
-        )
-
-        plt.title("UMAP")
-        plt.xlabel("")
-        plt.ylabel("")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
-
+    fig.tight_layout()
+    st.pyplot(fig)
 
 # Function for plotting boxplots
 def plot_boxplot_with_points(data, feature, labels):
