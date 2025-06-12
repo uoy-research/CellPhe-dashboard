@@ -34,6 +34,40 @@ ARCHIVE_FN = "outputs.zip"
 # which is to interleave them
 PALETTE = [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 0] + [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 1]
 
+def download_multiple_populations_output(
+        combined, separation, dim_red
+):
+    """
+    Allows for the downloading of the 3 main outputs from the multiple
+    populatiosn analysis.
+
+    Args:
+        - combined (pd.DataFrame): DataFrame of all the groups combined.
+        - separation (pd.DataFrame): DataFrame of the separation scores.
+        - dim_red (pd.DataFrame): DataFrame of the dimensionality reduction
+        scores.
+
+    Returns:
+        None, displays a GUI element to download files as a side effect.
+    """
+    MULTIPLE_POPULATIONS_OUTPUT_DIR = "multiple-populations-output"
+    MULTIPLE_POPULATIONS_OUTPUT_ARCHIVE = MULTIPLE_POPULATIONS_OUTPUT_DIR + '.zip'
+    os.makedirs(MULTIPLE_POPULATIONS_OUTPUT_DIR, exist_ok=True)
+    combined.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "features_combined.csv"), index=False)
+    separation.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "separation_scores.csv"), index=False)
+    dim_red.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "dimensionality_reduction.csv"), index=False)
+    output_fn = f"cellphe_multiple_populations_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+    shutil.make_archive(MULTIPLE_POPULATIONS_OUTPUT_DIR, "zip", MULTIPLE_POPULATIONS_OUTPUT_DIR)
+    with open(MULTIPLE_POPULATIONS_OUTPUT_ARCHIVE, "rb") as file:
+        st.download_button(
+            label="Download features",
+            data=file,
+            file_name=output_fn,
+            mime="application/zip",
+        )
 
 def segment_images_with_progress_bar(
     image_folder,
@@ -254,6 +288,17 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     - top_features: List of top discriminatory features
     - data: DataFrame containing the feature data for PCA
     - labels: List of group labels corresponding to the data
+
+    Returns:
+        - A DataFrame with 1 row per cell and 8 columns:
+            - CellID
+            - Group
+            - PCA1
+            - PCA2
+            - tsne1
+            - tsne2
+            - umap1
+            - umap2
     """
 
     # Preprocess data for dimensionality reduction
@@ -377,6 +422,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
 
     fig.tight_layout()
     st.pyplot(fig)
+    return dim_red_df
 
 # Function for plotting boxplots
 def plot_boxplot_with_points(data, feature, labels):
@@ -536,7 +582,7 @@ with tab1:
                 st.write("No time series features extracted.")
             else:
                 st.write("Time series feature extraction completed.")
-                output_fn = f"cellphe_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+                output_fn = f"cellphe_image_processing_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
                 with open(ARCHIVE_FN, "rb") as file:
                     st.download_button(
                         label="Download features",
@@ -736,7 +782,7 @@ with tab3:
             all_features = combined_data.columns
 
             # Display PCA and separation scores side by side
-            plot_sep_and_pca_side_by_side(
+            dim_red_df = plot_sep_and_pca_side_by_side(
                 top_sep_df, train_features, combined_data, labels
             )
 
@@ -752,7 +798,12 @@ with tab3:
             with col2:
                 plot_boxplot_with_points(combined_data, selected_feature, labels)
 
+            st.markdown("## Download outputs")
+            download_multiple_populations_output(
+                combined_data, sep_sorted,dim_red_df
+            )
             st.divider()
+
             st.markdown("# Classification of new cells")
             st.write(
                 "Upload a test dataset for classification to see how the cells compare to the training data. This must have the same columns as the training data."
