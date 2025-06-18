@@ -637,18 +637,15 @@ with tab2:
             with col1:
                 cell_data = new_features_df[new_features_df["CellID"] == cell_id]
                 # Plot the selected feature against FrameID (line plot)
-                if "FrameID" in cell_data.columns:
-                    plt.figure(figsize=(10, 6))
-                    plt.plot(
-                        cell_data["FrameID"], cell_data[selected_feature], linewidth=3
-                    )
-                    plt.title(
-                        f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
-                    )
-                    plt.grid(False)  # Remove the grid
-                    st.pyplot(plt.gcf())
-                else:
-                    st.warning("FrameID column not found in data.")
+                plt.figure(figsize=(10, 6))
+                plt.plot(
+                    cell_data["FrameID"], cell_data[selected_feature], linewidth=3
+                )
+                plt.title(
+                    f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
+                )
+                plt.grid(False)  # Remove the grid
+                st.pyplot(plt.gcf())
 
             with col2:
                 n_frames = new_features_df["FrameID"].unique().size
