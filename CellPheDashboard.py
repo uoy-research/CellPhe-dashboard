@@ -279,7 +279,7 @@ def process_images(
 
 
 # Function for plotting separation scores and PCA side by side
-def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
+def plot_sep_and_pca_side_by_side(sep_df, top_features, data):
     """
     Plots the separation scores and PCA plots side by side using Streamlit columns.
 
@@ -287,12 +287,13 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     - sep_df: DataFrame containing separation scores
     - top_features: List of top discriminatory features
     - data: DataFrame containing the feature data for PCA
-    - labels: List of group labels corresponding to the data
 
     Returns:
         - A DataFrame with 1 row per cell and 8 columns:
             - CellID
-            - Group
+            - Filename
+            - group_index
+            - group
             - PCA1
             - PCA2
             - tsne1
@@ -308,13 +309,15 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
 
     # Create a DataFrame with the scaled data for easier handling
     scaled_df = pd.DataFrame(scaled_data, columns=top_features)
-    scaled_df["Group"] = labels
+    scaled_df["group"] = data['group']
+    scaled_df["group_index"] = data['group_index']
+    scaled_df["filename"] = data['filename']
+    scaled_df["CellID"] = data['CellID']
 
     # Drop rows with NaN values before PCA
     scaled_df = scaled_df.dropna()
 
     # Adjust labels to match the remaining rows after dropping NaNs
-    labels_cleaned = scaled_df["Group"].values
     scaled_data_cleaned = scaled_df[top_features].values
 
     # Perform 3 types ofdimensionality reduction
@@ -333,7 +336,10 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
             pd.DataFrame(umap_scores, columns=["umap1", "umap2"])
         ],
         axis=1)
-    dim_red_df["Group"] = labels_cleaned
+    dim_red_df["CellID"] = scaled_df['CellID'].values
+    dim_red_df["group"] = scaled_df['group'].values
+    dim_red_df["group_index"] = scaled_df['group_index'].values
+    dim_red_df["filename"] = scaled_df['filename'].values
 
 
     colour_mapping = {
@@ -387,16 +393,16 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     # Top right: PCA Plot
     plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
     sns.scatterplot(
-        data=dim_red_df, x="PC1", y="PC2", hue="Group", palette=PALETTE, s=100,
+        data=dim_red_df, x="PC1", y="PC2", hue="group", palette=PALETTE, s=100,
         alpha=0.7, ax=ax2, legend=False
     )
     ax2.set_title("PCA")
     ax2.set_xlabel(f"PC1 ({pca_mod.explained_variance_ratio_[0]*100:.2f}% Variance)")
     ax2.set_ylabel(f"PC2 ({pca_mod.explained_variance_ratio_[1]*100:.2f}% Variance)")
 
-    # Bottom lef: tSNE Plot
+    # Bottom left: tSNE Plot
     sns.scatterplot(
-        data=dim_red_df, x="tsne1", y="tsne2", hue="Group", palette=PALETTE,
+        data=dim_red_df, x="tsne1", y="tsne2", hue="group", palette=PALETTE,
         s=100, ax=ax3, legend=False,
         alpha=0.7
     )
@@ -406,7 +412,7 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
 
     # Bottom right: UMAP Plot
     sns.scatterplot(
-        data=dim_red_df, x="umap1", y="umap2", hue="Group", palette=PALETTE,
+        data=dim_red_df, x="umap1", y="umap2", hue="group", palette=PALETTE,
         s=100, ax=ax4, legend=True,
         alpha=0.7
     )
@@ -425,20 +431,20 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     return dim_red_df
 
 # Function for plotting boxplots
-def plot_boxplot_with_points(data, feature, labels):
+def plot_boxplot_with_points(data, feature, label_column):
     """
     Plots box plots with individual data points for the specified feature,
     where points are slightly darker and larger than the box colors.
 
     Parameters:
     - data: DataFrame containing cell features
-    - feature: str, the feature to plot
-    - labels: list, group labels for the data
+    - feature: str, the feature to plot, must be a column in `data`.
+    - label_column: str, the column in `data` containing the labels to group by.
     """
     plt.figure(figsize=(12, 6))
 
     # Create a new DataFrame for plotting
-    plot_data = pd.DataFrame({"Feature": data[feature], "Group": labels})
+    plot_data = pd.DataFrame({"Feature": data[feature], "Group": data[label_column]})
 
     # Get color palette from 'tab20'
     palette = sns.color_palette(PALETTE)
@@ -734,15 +740,13 @@ with tab3:
                         "Upload a feature set of the cells temporal summary measures, as output by the time_series_features() function in CellPhe."
                     )
                 else:
-                    new_features_df = new_features_df.drop("CellID", axis=1)
+                    new_features_df['filename'] = uploaded_file.name
+                    new_features_df['group_index'] = j+1  # 1-indexed
                     group_data.append(new_features_df)
         # Combine all the CSVs for this group
         if sum(x is not None for x in group_data) == num_files:
-            group_data = pd.concat(group_data)
-            labels.extend(
-                [st.session_state[f"group_name_{i}"]] * len(group_data)
-            )
-            dataframes[i] = group_data
+            dataframes[i] = pd.concat(group_data)
+            dataframes[i]['group'] = st.session_state[f"group_name_{i}"]
         st.divider()
 
     # Calculate separation scores if all dataframes are processed
@@ -753,8 +757,10 @@ with tab3:
             st.warning("Please enter a name for every group")
         else:
             combined_data = pd.concat(dataframes, ignore_index=True)
+            all_features = [x for x in combined_data.columns if x not in
+                            ['group', 'group_index', 'filename', 'CellID']]
             # Calculate separation scores for all groups at once
-            sep = cellphe.separation.calculate_separation_scores(dataframes)
+            sep = cellphe.separation.calculate_separation_scores([x[all_features] for x in dataframes])
 
             # Sort the separation scores in descending order by the 'Separation' column
             sep_sorted = sep.sort_values(by="Separation", ascending=False)
@@ -776,11 +782,10 @@ with tab3:
             # Get the top n separation scores for display and analysis
             top_sep_df = sep_sorted.head(n)
             train_features = top_sep_df["Feature"]
-            all_features = combined_data.columns
 
             # Display PCA and separation scores side by side
             dim_red_df = plot_sep_and_pca_side_by_side(
-                top_sep_df, train_features, combined_data, labels
+                top_sep_df, train_features, combined_data
             )
 
             # Dropdown to select feature for the boxplot
@@ -793,7 +798,8 @@ with tab3:
                     "Select Feature for Boxplot", all_features
                 )
             with col2:
-                plot_boxplot_with_points(combined_data, selected_feature, labels)
+                plot_boxplot_with_points(combined_data, selected_feature,
+                                         'group')
 
             st.markdown("## Download outputs")
             download_multiple_populations_output(
@@ -857,7 +863,7 @@ with tab3:
                     with col2:
                         st.write("Boxplot for Selected Feature:")
                         plot_boxplot_with_points(
-                            test_df, selected_feature_test, test_df["Predicted"]
+                            test_df, selected_feature_test, 'Predicted'
                         )
     else:
         st.warning("Please upload a valid CSV for every group.")
