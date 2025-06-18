@@ -704,7 +704,6 @@ with tab3:
     )
     st.divider()
     dataframes = [None] * num_groups
-    labels = []
 
     # Input fields for each group
     for i in range(num_groups):
@@ -826,7 +825,7 @@ with tab3:
                     # Use n directly for the number of features for classification
                     # Select top n features from each dataframe for training
                     train_x = combined_data[train_features]
-                    train_y = np.array(labels)
+                    train_y = combined_data['group']
 
                     # Remove rows with NaN values from the training data
                     train_x = train_x.dropna()
@@ -851,6 +850,12 @@ with tab3:
                         startangle=90,
                     )
                     st.pyplot(plt.gcf())
+                    st.download_button(
+                        label="Download test set predictions",
+                        data=test_df.to_csv(index=False).encode('utf-8'),
+                        file_name=f"cellphe_classification_predictions_{time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime())}",
+                        mime="text/csv",
+                    )
 
                     st.write(
                         "Use the dropdown below to investigate the differences in the features between the predicted classes for the test set."
