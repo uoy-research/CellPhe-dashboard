@@ -1,79 +1,98 @@
 import time
 import os
-import pandas as pd
-import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
-import umap
+from pathlib import Path
+import shutil
 import warnings
-import cellphe
-import matplotlib.colors as mcolors
+
 from cellphe import (
-    segment_images,
     track_images,
     cell_features,
     import_data,
     time_series_features,
 )
-import platform
-from pathlib import Path
-import tempfile
-import shutil
-import sys
-
-#IS_APPLE_SILICON_MAC = sys.platform == "darwin" and platform.processor() == "arm"
-IS_APPLE_SILICON_MAC = True
-
-if not IS_APPLE_SILICON_MAC:
-    import tkinter as tk
-    from tkinter import filedialog
-    # Setup tkinter (only used for folder selector)
-    root = tk.Tk()
-    # Don't show hidden files/dirs in the file dialog
-    # Taken from: https://stackoverflow.com/a/54068050/1020006
-    try:
-        # call a dummy dialog with an impossible option to initialize the file
-        # dialog without really getting a dialog window; this will throw a
-        # TclError, so we need a try...except :
-        try:
-            root.tk.call("tk_getOpenFile", "-foobarbaz")
-        except tk.TclError:
-            pass
-        # now set the magic variables accordingly
-        root.tk.call("set", "::tk::dialog::file::showHiddenBtn", "1")
-        root.tk.call("set", "::tk::dialog::file::showHiddenVar", "0")
-    except:
-        pass
-    root.withdraw()
-
-    # Make folder picker dialog appear on top of other windows
-    root.wm_attributes("-topmost", 1)
+import cellphe
+from cellpose import models
+import pandas as pd
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+from skimage import io
+import streamlit as st
+import umap
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
 EXCLUDE_ANALYSIS_COLUMNS = ["CellID", "FrameID", "ROI_filename"]
+ARCHIVE_FN = "outputs.zip"
+# Form palette as all bold colours then all pastels, rather than the default
+# which is to interleave them
+PALETTE = [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 0] + [x for i, x in enumerate(sns.color_palette("tab20")) if i % 2 == 1]
 
-
-def number_tifs_in_folder(folder: str):
+def download_multiple_populations_output(
+        combined, separation, dim_red
+):
     """
-    Checks whether there is at least one TIF in the specified folder.
+    Allows for the downloading of the 3 main outputs from the multiple
+    populatiosn analysis.
 
-    :param folder: The folder to check.
-    :return: A boolean where True indicates at least one TIF is in the
-    directory.
+    Args:
+        - combined (pd.DataFrame): DataFrame of all the groups combined.
+        - separation (pd.DataFrame): DataFrame of the separation scores.
+        - dim_red (pd.DataFrame): DataFrame of the dimensionality reduction
+        scores.
+
+    Returns:
+        None, displays a GUI element to download files as a side effect.
     """
-    contents = [
-        x
-        for x in os.listdir(image_folder)
-        if os.path.isfile(os.path.join(image_folder, x))
-    ]
-    extensions = [os.path.splitext(x)[1] for x in contents]
-    return sum(x == ".tif" for x in extensions)
+    MULTIPLE_POPULATIONS_OUTPUT_DIR = "multiple-populations-output"
+    MULTIPLE_POPULATIONS_OUTPUT_ARCHIVE = MULTIPLE_POPULATIONS_OUTPUT_DIR + '.zip'
+    os.makedirs(MULTIPLE_POPULATIONS_OUTPUT_DIR, exist_ok=True)
+    combined.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "features_combined.csv"), index=False)
+    separation.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "separation_scores.csv"), index=False)
+    dim_red.to_csv(os.path.join(MULTIPLE_POPULATIONS_OUTPUT_DIR,
+                                      "dimensionality_reduction.csv"), index=False)
+    output_fn = f"cellphe_multiple_populations_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+    shutil.make_archive(MULTIPLE_POPULATIONS_OUTPUT_DIR, "zip", MULTIPLE_POPULATIONS_OUTPUT_DIR)
+    with open(MULTIPLE_POPULATIONS_OUTPUT_ARCHIVE, "rb") as file:
+        st.download_button(
+            label="Download features",
+            data=file,
+            file_name=output_fn,
+            mime="application/zip",
+        )
+
+def segment_images_with_progress_bar(
+    image_folder,
+    masks_folder,
+    model_params={'model_type': 'cyto3'},
+    eval_params = {}
+):
+    """
+    Local version of cellphe's `segment_images`.
+    Does the same job but with 2 modifications:
+         - Uses CellposeModel rather than Cellpose, which allows for custom
+             cellpose models
+         - Updates a progress bar after each image is segmented
+    """
+    model = models.CellposeModel(**model_params)
+    image_fns = sorted(os.listdir(image_folder))
+    n_images = len(image_fns)
+    segmenting_bar = st.progress(0, text=f"Image {0}/{n_images}")
+    for i, fn in enumerate(image_fns):
+        image = np.array(Image.open(os.path.join(image_folder, fn)))
+        masks = model.eval(image, **eval_params)[0]
+        segmenting_bar.progress((i+1)/n_images, text=f"Image {i+1}/{n_images}")
+        io.imsave(os.path.join(masks_folder, fn), masks.astype("uint16"))  # Assuming masks are uint16
+    time.sleep(2)
+    segmenting_bar.empty()
 
 
 # Function to assign feature categories based on substrings in the feature names
@@ -114,96 +133,153 @@ def assign_color(feature, colour_mapping):
 
 
 def process_images(
-    image_folder,
+    raw_images,
     framerate=0.0028,
+    min_frames=0,
     keep_masks=False,
     keep_rois=False,
     keep_trackmate_features=False,
     keep_cellphe_frame_features=False,
-    cellpose_model='cyto'
+    cellpose_model='cyto3',
+    uploaded_masks=None,
+    uploaded_roi=None,
+    uploaded_trackmate_csv=None
 ):
     """
     Process a folder of images to extract cell features and time series features.
 
     Parameters:
-    - image_folder: str, path to the folder containing images
+    - raw_images: list[str], List of uploaded image paths
     - framerate: float, frame rate for time series analysis (default: 0.0028)
 
     Returns:
     - tsvariables: DataFrame, extracted time series features (if applicable)
     """
     # Step 1: Define paths
-    out_dir = Path(image_folder).parent.absolute()
-    with tempfile.TemporaryDirectory() as masks_folder:
-        with tempfile.NamedTemporaryFile() as rois_archive:
-            with tempfile.NamedTemporaryFile() as tracked_csv_fp:
+    out_dir = "outputs"
+    image_folder = "images"
+    masks_folder = os.path.join(out_dir, "masks")
+    rois_archive = os.path.join(out_dir, "rois.zip")
+    trackmate_csv = os.path.join(out_dir, "trackmate.csv")
+    frame_features_csv = os.path.join(out_dir, "frame_features.csv")
+    ts_features_csv = os.path.join(out_dir, "time_series_features.csv")
+    Path(masks_folder).mkdir(parents=True, exist_ok=True)
+    Path(image_folder).mkdir(exist_ok=True)
 
-                # Step 2: Segment images
-                st.write("Segmenting cells...")
-                segment_images(image_folder, masks_folder, cellpose_model)
-                if keep_masks:
-                    shutil.make_archive(
-                        os.path.join(out_dir, "masks"), "zip", masks_folder
-                    )
-                st.success("Segmentation completed.")
+    # Write uploaded files to disk - unnecesary file IO but CellPhe requires
+    # images to be on disk, not in memory
+    for file in raw_images:
+        with open(os.path.join(image_folder, file.name), 'wb') as outfile:
+            outfile.write(file.getvalue())
 
-                # Step 3: Track images
-                st.write("Tracking cells...")
-                track_images(masks_folder, tracked_csv_fp.name,
-                             rois_archive.name)
-                if keep_rois:
-                    shutil.copy(
-                        rois_archive.name,
-                        os.path.join(out_dir, "rois.zip"),
-                    )
-                if keep_trackmate_features:
-                    shutil.copy(
-                        tracked_csv_fp.name,
-                        os.path.join(out_dir, "trackmate_features.csv"),
-                    )
-                st.success("Tracking completed.")
+    if len(uploaded_masks) > 0:
+        for file in uploaded_masks:
+            with open(os.path.join(masks_folder, file.name), 'wb') as outfile:
+                outfile.write(file.getvalue())
 
-                # Step 4: Import tracked data
-                feature_table = import_data(tracked_csv_fp.name,
-                                            "Trackmate_auto", 10)
+    if uploaded_roi is not None:
+        with open(rois_archive, 'wb') as outfile:
+            outfile.write(uploaded_roi.getvalue())
 
-                # Step 5: Extract features
-                st.write("Extracting CellPhe features...")
-                new_features = cell_features(
-                    feature_table, rois_archive.name, image_folder, framerate=framerate
-                )
-                if keep_cellphe_frame_features:
-                    new_features.to_csv(
-                        os.path.join(
-                            out_dir,
-                            os.path.basename(image_folder) + "_frame_features.csv",
-                        ),
-                        index=False,
-                    )
-                st.success("CellPhe feature extraction completed.")
+    if uploaded_trackmate_csv is not None:
+        with open(trackmate_csv, 'wb') as outfile:
+            outfile.write(uploaded_trackmate_csv.getvalue())
 
-                # Step 6: Extract time series features
-                st.write(
-                    "Extracting time series features..."
-                )
-                # Extract time series features
-                tsvariables = time_series_features(new_features)
+    have_masks = len(uploaded_masks) > 0
+    have_tracking = uploaded_roi is not None and uploaded_trackmate_csv is not None
 
-                # Save the new features to a CSV file
-                features_csv = os.path.join(
-                    out_dir,
-                    os.path.basename(image_folder) + "_timeseries_features.csv",
-                )
-                tsvariables.to_csv(features_csv, index=False)
-                st.success(
-                    f"Time series feature extraction completed. CSV saved as: {features_csv}"
-                )
+
+    # Step 2: Segment images
+    overall_bar = st.progress(0.2, text="Segmenting")
+    if not have_masks and not have_tracking:
+        try:
+            if cellpose_model == 'cyto3':
+                cellpose_params = {'model_type': cellpose_model}
+            else:
+                if cellpose_model == 'ioLight':
+                    model_path = "cellpose_models/CP_20250421_ioLight_21imgs"
+                elif cellpose_model == 'LiveCyte Brightfield':
+                    model_path = "cellpose_models/CP_20250502_Livcyto_25imgs"
+                else:
+                    model_path = ''  # appease linter, code can't get here
+                cellpose_params = {'pretrained_model': model_path}
+            segment_images_with_progress_bar(
+                image_folder,
+                masks_folder,
+                model_params=cellpose_params
+            )
+        except Exception as e:
+            st.write(f"An unexpected error occurred during segmentation: {e}")
+            overall_bar.empty()
+            return
+
+    # Step 3: Track images
+    overall_bar.progress(0.4, text="Tracking")
+    if not have_tracking:
+        try:
+            track_images(masks_folder, trackmate_csv, rois_archive)
+        except Exception as e:
+            st.write(f"An unexpected error occurred during tracking: {e}")
+            overall_bar.empty()
+            return
+
+    # Step 4: Import tracked data
+    try:
+        feature_table = import_data(trackmate_csv, "Trackmate_auto", min_frames)
+    except:
+        st.write("Unable to import tracked data")
+        overall_bar.empty()
+        return
+
+    if feature_table.shape[0] == 0:
+        st.write("No cells found")
+        overall_bar.empty()
+        return
+
+    # Step 5: Extract features
+    overall_bar.progress(0.6, text="Extracting frame features")
+    try:
+        frame_features = cell_features(
+            feature_table, rois_archive, image_folder, framerate=framerate
+        )
+    except:
+        st.write("An error occured while extracting the frame level features")
+        overall_bar.empty()
+        return
+
+    # Step 6: Extract time series features
+    overall_bar.progress(0.8, text="Extracting temporal features")
+    # Extract time series features
+    try:
+        tsvariables = time_series_features(frame_features)
+    except:
+        st.write("An error occured while extracting the temporal features, NB: generally at least 20 frames are needed for robust calculation")
+        overall_bar.empty()
+        return
+
+    # Save the new features to a CSV file
+    tsvariables.to_csv(ts_features_csv, index=False)
+    overall_bar.progress(1, text="Processing complete")
+    time.sleep(2)
+
+    overall_bar.empty()
+
+    if not keep_masks:
+        shutil.rmtree(masks_folder)
+    if not keep_rois:
+        os.remove(rois_archive)
+    if not keep_trackmate_features:
+        os.remove(trackmate_csv)
+    if keep_cellphe_frame_features:
+        frame_features.to_csv(frame_features_csv, index=False)
+
+    shutil.make_archive("outputs", "zip", "outputs")
 
     return tsvariables
 
 
 # Function for plotting separation scores and PCA side by side
-def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
+def plot_sep_and_pca_side_by_side(sep_df, top_features, data):
     """
     Plots the separation scores and PCA plots side by side using Streamlit columns.
 
@@ -211,8 +287,60 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     - sep_df: DataFrame containing separation scores
     - top_features: List of top discriminatory features
     - data: DataFrame containing the feature data for PCA
-    - labels: List of group labels corresponding to the data
+
+    Returns:
+        - A DataFrame with 1 row per cell and 8 columns:
+            - CellID
+            - Filename
+            - group_index
+            - group
+            - PCA1
+            - PCA2
+            - tsne1
+            - tsne2
+            - umap1
+            - umap2
     """
+
+    # Preprocess data for dimensionality reduction
+    # Standardize the features
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(data[top_features])
+
+    # Create a DataFrame with the scaled data for easier handling
+    scaled_df = pd.DataFrame(scaled_data, columns=top_features)
+    scaled_df["group"] = data['group']
+    scaled_df["group_index"] = data['group_index']
+    scaled_df["filename"] = data['filename']
+    scaled_df["CellID"] = data['CellID']
+
+    # Drop rows with NaN values before PCA
+    scaled_df = scaled_df.dropna()
+
+    # Adjust labels to match the remaining rows after dropping NaNs
+    scaled_data_cleaned = scaled_df[top_features].values
+
+    # Perform 3 types ofdimensionality reduction
+    pca_mod = PCA(n_components=2)  # Use 2 principal components for visualization
+    tsne_mod = TSNE(init="random", perplexity=3)
+    umap_mod = umap.UMAP()
+    pca_scores = pca_mod.fit_transform(scaled_data_cleaned)
+    tsne_scores = tsne_mod.fit_transform(scaled_data_cleaned)
+    umap_scores = umap_mod.fit_transform(scaled_data_cleaned)
+
+    # Store results in a data frame
+    dim_red_df = pd.concat(
+        [
+            pd.DataFrame(pca_scores, columns=["PC1", "PC2"]),
+            pd.DataFrame(tsne_scores, columns=["tsne1", "tsne2"]),
+            pd.DataFrame(umap_scores, columns=["umap1", "umap2"])
+        ],
+        axis=1)
+    dim_red_df["CellID"] = scaled_df['CellID'].values
+    dim_red_df["group"] = scaled_df['group'].values
+    dim_red_df["group_index"] = scaled_df['group_index'].values
+    dim_red_df["filename"] = scaled_df['filename'].values
+
 
     colour_mapping = {
         "size": "black",  # For size-related features
@@ -228,139 +356,98 @@ def plot_sep_and_pca_side_by_side(sep_df, top_features, data, labels):
     )
 
     # Create two columns for side-by-side plotting
-    col1, col2 = st.columns(2, vertical_alignment="center")
-    col3, col4 = st.columns(2, vertical_alignment="center")
+    fig = plt.figure(figsize=(14,16))
+    gs = fig.add_gridspec(3, 2, height_ratios=(1, 1, 0.1))
+    ax1 = fig.add_subplot(gs[0, 0])  # Separation
+    ax2 = fig.add_subplot(gs[0, 1])  # PCA
+    ax3 = fig.add_subplot(gs[1, 0])  # tSNE
+    ax4 = fig.add_subplot(gs[1, 1])  # UMAP
+    ax5 = fig.add_subplot(gs[2, :])  # Legend
 
-    # Column 1: Separation Scores
-    with col1:
-        plt.figure(figsize=(6, 6))  # Set equal size for the separation scores plot
-        sns.barplot(
-            data=sep_df, x="Feature", y="Separation", palette=sep_df["Colour"].tolist()
-        )  # Convert to list
-        plt.title("Separation Scores for Each Feature")
-        plt.xlabel("Feature Names")
-        plt.ylabel("Separation Score")
-        plt.xticks(rotation=90)  # Rotate feature names for better visibility
+    # Top left: Separation Scores
+    sns.barplot(
+        data=sep_df, x="Feature", y="Separation",
+        palette=sep_df["Colour"].tolist(), ax=ax1
+    )  # Convert to list
+    ax1.set_title("Separation Scores for Each Feature")
+    ax1.set_xlabel("Feature Names")
+    ax1.set_ylabel("Separation Score")
+    ax1.set_xticks(ax1.get_xticks(), ax1.get_xticklabels(), rotation=90)  # Rotate feature names for better visibility
 
-        # Creating a legend
-        handles = []
-        for label, color in colour_mapping.items():
-            handles.append(
-                plt.Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="w",
-                    label=label,
-                    markerfacecolor=color,
-                    markersize=10,
-                )
+    # Creating a legend
+    handles = []
+    for label, color in colour_mapping.items():
+        handles.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label=label,
+                markerfacecolor=color,
+                markersize=10,
             )
-        plt.legend(title="Feature Categories", handles=handles)
-
-        st.pyplot(plt.gcf())
-
-    # Preprocess data for dimensionality reduction
-    # Standardize the features
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(data[top_features])
-
-    # Create a DataFrame with the scaled data for easier handling
-    scaled_df = pd.DataFrame(scaled_data, columns=top_features)
-    scaled_df["Group"] = labels
-
-    # Drop rows with NaN values before PCA
-    scaled_df = scaled_df.dropna()
-
-    # Adjust labels to match the remaining rows after dropping NaNs
-    labels_cleaned = scaled_df["Group"].values
-    scaled_data_cleaned = scaled_df[top_features].values
-
-    # Column 2: PCA Plot
-    with col2:
-        # Perform PCA on the cleaned, scaled data
-        pca = PCA(n_components=2)  # Use 2 principal components for visualization
-        pca_scores = pca.fit_transform(scaled_data_cleaned)
-
-        # Create a DataFrame for PCA scores
-        pca_df = pd.DataFrame(pca_scores, columns=["PC1", "PC2"])
-        pca_df["Group"] = labels_cleaned
-
-        # Plot PCA scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
-        sns.scatterplot(
-            data=pca_df, x="PC1", y="PC2", hue="Group", palette="tab10", s=100
         )
+    ax1.legend(title="Feature Categories", handles=handles)
 
-        plt.title("PCA")
-        plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.2f}% Variance)")
-        plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.2f}% Variance)")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
+    # Top right: PCA Plot
+    plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
+    sns.scatterplot(
+        data=dim_red_df, x="PC1", y="PC2", hue="group", palette=PALETTE, s=100,
+        alpha=0.7, ax=ax2, legend=False
+    )
+    ax2.set_title("PCA")
+    ax2.set_xlabel(f"PC1 ({pca_mod.explained_variance_ratio_[0]*100:.2f}% Variance)")
+    ax2.set_ylabel(f"PC2 ({pca_mod.explained_variance_ratio_[1]*100:.2f}% Variance)")
 
-    # Column 3: tSNE Plot
-    with col3:
-        # Perform tSNE on the cleaned, scaled data
-        tsne_mod = TSNE(init="random", perplexity=3)
-        tsne_scores = tsne_mod.fit_transform(scaled_data_cleaned)
+    # Bottom left: tSNE Plot
+    sns.scatterplot(
+        data=dim_red_df, x="tsne1", y="tsne2", hue="group", palette=PALETTE,
+        s=100, ax=ax3, legend=False,
+        alpha=0.7
+    )
+    ax3.set_title("tSNE")
+    ax3.set_xlabel("")
+    ax3.set_ylabel("")
 
-        # Create a DataFrame for tSNE scores
-        tsne_df = pd.DataFrame(tsne_scores, columns=["Dim1", "Dim2"])
-        tsne_df["Group"] = labels_cleaned
+    # Bottom right: UMAP Plot
+    sns.scatterplot(
+        data=dim_red_df, x="umap1", y="umap2", hue="group", palette=PALETTE,
+        s=100, ax=ax4, legend=True,
+        alpha=0.7
+    )
+    ax4.set_title("UMAP")
+    ax4.set_xlabel("")
+    ax4.set_ylabel("")
 
-        # Plot tSNE scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the PCA plot
-        sns.scatterplot(
-            data=tsne_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
-        )
+    # Bottom row: shared group legend
+    h, l = ax4.get_legend_handles_labels()
+    ax4.get_legend().remove()
+    ax5.legend(h, l, title="Group", borderaxespad=0, ncol=5, loc="center")
+    ax5.axis("off")
 
-        plt.title("tSNE")
-        plt.xlabel("")
-        plt.ylabel("")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
-
-    # Column 4: UMAP Plot
-    with col4:
-        # Perform UMAP on the cleaned, scaled data
-        umap_mod = umap.UMAP()
-        umap_scores = umap_mod.fit_transform(scaled_data_cleaned)
-
-        # Create a DataFrame for UMAP scores
-        umap_df = pd.DataFrame(umap_scores, columns=["Dim1", "Dim2"])
-        umap_df["Group"] = labels_cleaned
-
-        # Plot UMAP scores
-        plt.figure(figsize=(6, 6))  # Set equal size for the UMAP plot
-        sns.scatterplot(
-            data=umap_df, x="Dim1", y="Dim2", hue="Group", palette="tab10", s=100
-        )
-
-        plt.title("UMAP")
-        plt.xlabel("")
-        plt.ylabel("")
-        plt.legend(title="Group")
-        st.pyplot(plt.gcf())
-
+    fig.tight_layout()
+    st.pyplot(fig)
+    return dim_red_df
 
 # Function for plotting boxplots
-def plot_boxplot_with_points(data, feature, labels):
+def plot_boxplot_with_points(data, feature, label_column):
     """
     Plots box plots with individual data points for the specified feature,
     where points are slightly darker and larger than the box colors.
 
     Parameters:
     - data: DataFrame containing cell features
-    - feature: str, the feature to plot
-    - labels: list, group labels for the data
+    - feature: str, the feature to plot, must be a column in `data`.
+    - label_column: str, the column in `data` containing the labels to group by.
     """
     plt.figure(figsize=(12, 6))
 
     # Create a new DataFrame for plotting
-    plot_data = pd.DataFrame({"Feature": data[feature], "Group": labels})
+    plot_data = pd.DataFrame({"Feature": data[feature], "Group": data[label_column]})
 
-    # Get color palette from 'tab10'
-    palette = sns.color_palette("tab10")
+    # Get color palette from 'tab20'
+    palette = sns.color_palette(PALETTE)
 
     # Create the box plot without transparency first
     boxplot = sns.boxplot(
@@ -405,11 +492,6 @@ tab1, tab2, tab3 = st.tabs(
     ["Image Processing", "Single Population", "Multiple Populations"]
 )
 
-if "image_folder" not in st.session_state:
-    image_folder = " "
-else:
-    image_folder = st.session_state.image_folder
-
 # Tab 1: Image Processing
 with tab1:
     st.markdown("# Image Processing")
@@ -430,55 +512,90 @@ with tab1:
                 it could be due to this.
                 """
     )
-    col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
-    with col1:
-        if not IS_APPLE_SILICON_MAC:
-            clicked = st.button("Select image folder")
-        else:
-            st.text_input("Image folder", key="image_folder", value=" ")
-            clicked = False
-    with col2:
-        st.markdown(f"Selected folder: `{image_folder}`")
-    if clicked:
-        st.session_state.image_folder = filedialog.askdirectory(master=root)
-        st.rerun()
+    st.markdown("## Upload raw images")
+    raw_images = st.file_uploader(
+        "Upload images",
+        type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
+        accept_multiple_files=True
+     )
 
     # Button to start processing
-    if image_folder != " ":
+    if len(raw_images) > 0:
         # Validate that the folder contains images
-        if (n_tifs := number_tifs_in_folder(image_folder)) == 0:
-            st.warning("No TIFs found in folder")
-        else:
-            st.info(f"Found {n_tifs} images.")
+        st.info(f"Uploaded {len(raw_images)} images.")
+        st.markdown("## Parameters")
+        col1, col2 = st.columns(2, vertical_alignment="center")
+        with col1:
             save_rois = st.toggle("Keep ROIs?", value=True)
-            save_masks = st.toggle("Keep CellPose masks?", value=False)
+            save_masks = st.toggle("Keep CellPose masks?", value=True)
             save_frame_features = st.toggle("Keep CellPhe frame-features?", value=True)
-            save_trackmate_features = st.toggle("Keep TrackMate features?", value=False)
+            save_trackmate_features = st.toggle("Keep TrackMate features?", value=True)
+        with col2:
+            cellpose_model = st.selectbox(
+                "Choose a cellpose segmentation model",
+                ("cyto3", "ioLight", "LiveCyte Brightfield"),
+            )
+            # Ideally would have 20 frames per cell minimum, otherwise time-series
+            # features struggle to estimate
+            min_frames = st.number_input(
+                "Minimum number of frames a cell must be in to be kept",
+                min_value=0,
+                max_value=len(raw_images),
+                value=min(len(raw_images), 20),
+            )
             frame_rate = st.number_input(
                 "Time period between frames (only used to provide a meaningful unit for cell velocity)",
                 min_value=0.0,
                 max_value=10.0,
                 value=5.0,
             )
-            cellpose_model = st.text_input("CellPose model", value="cyto")
+        st.markdown("## Resuming previous processing")
+        st.write("Upload previously calculated intermediate files (masks, ROIs, trackmate feature to skip out processing steps. NB: ensure that the intermediate files are for the same raw images!")
+        uploaded_masks = st.file_uploader(
+            "Upload previously segmented masks",
+            type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
+            accept_multiple_files=True
+         )
+        uploaded_roi = st.file_uploader(
+            "Upload previously tracked ROI archive",
+            type=['zip'],
+            accept_multiple_files=False
+         )
+        uploaded_trackmate_csv = st.file_uploader(
+            "Upload previously run trackmate CSV",
+            type=['csv'],
+            accept_multiple_files=False
+         )
 
-            if st.button("Process Images"):
-                st.write(f"Processing images from folder: {image_folder}")
-                # Call the process_images function (Assuming it is defined elsewhere in your code)
-                ts_variables = process_images(
-                    image_folder,
-                    keep_masks=save_masks,
-                    keep_rois=save_rois,
-                    keep_trackmate_features=save_trackmate_features,
-                    keep_cellphe_frame_features=save_frame_features,
-                    framerate=frame_rate,
-                    cellpose_model=cellpose_model
-                )
+        st.markdown("## Run")
+        if st.button("Process Images"):
+            # Call the process_images function (Assuming it is defined elsewhere in your code)
+            ts_variables = process_images(
+                raw_images,
+                keep_masks=save_masks,
+                keep_rois=save_rois,
+                keep_trackmate_features=save_trackmate_features,
+                keep_cellphe_frame_features=save_frame_features,
+                min_frames=min_frames,
+                framerate=frame_rate,
+                cellpose_model=cellpose_model,
+                uploaded_masks=uploaded_masks,
+                uploaded_roi=uploaded_roi,
+                uploaded_trackmate_csv=uploaded_trackmate_csv
+            )
 
-                if not ts_variables.empty:
-                    st.write("Time series feature extraction completed.")
-                else:
-                    st.write("No time series features extracted.")
+            if ts_variables is None or ts_variables.empty:
+                st.write("No time series features extracted.")
+            else:
+                st.write("Time series feature extraction completed.")
+                output_fn = f"cellphe_image_processing_outputs_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}"
+                with open(ARCHIVE_FN, "rb") as file:
+                    st.download_button(
+                        label="Download features",
+                        data=file,
+                        file_name=output_fn,
+                        mime="application/zip",
+                    )
 
 # Tab 2: Single Population Characterisation
 with tab2:
@@ -526,18 +643,15 @@ with tab2:
             with col1:
                 cell_data = new_features_df[new_features_df["CellID"] == cell_id]
                 # Plot the selected feature against FrameID (line plot)
-                if "FrameID" in cell_data.columns:
-                    plt.figure(figsize=(10, 6))
-                    plt.plot(
-                        cell_data["FrameID"], cell_data[selected_feature], linewidth=3
-                    )
-                    plt.title(
-                        f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
-                    )
-                    plt.grid(False)  # Remove the grid
-                    st.pyplot(plt.gcf())
-                else:
-                    st.warning("FrameID column not found in data.")
+                plt.figure(figsize=(10, 6))
+                plt.plot(
+                    cell_data["FrameID"], cell_data[selected_feature], linewidth=3
+                )
+                plt.title(
+                    f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
+                )
+                plt.grid(False)  # Remove the grid
+                st.pyplot(plt.gcf())
 
             with col2:
                 n_frames = new_features_df["FrameID"].unique().size
@@ -590,7 +704,6 @@ with tab3:
     )
     st.divider()
     dataframes = [None] * num_groups
-    labels = []
 
     # Input fields for each group
     for i in range(num_groups):
@@ -626,15 +739,13 @@ with tab3:
                         "Upload a feature set of the cells temporal summary measures, as output by the time_series_features() function in CellPhe."
                     )
                 else:
-                    new_features_df = new_features_df.drop("CellID", axis=1)
+                    new_features_df['filename'] = uploaded_file.name
+                    new_features_df['group_index'] = j+1  # 1-indexed
                     group_data.append(new_features_df)
         # Combine all the CSVs for this group
         if sum(x is not None for x in group_data) == num_files:
-            group_data = pd.concat(group_data)
-            labels.extend(
-                [st.session_state[f"group_name_{i}"]] * len(group_data)
-            )
-            dataframes[i] = group_data
+            dataframes[i] = pd.concat(group_data)
+            dataframes[i]['group'] = st.session_state[f"group_name_{i}"]
         st.divider()
 
     # Calculate separation scores if all dataframes are processed
@@ -645,8 +756,10 @@ with tab3:
             st.warning("Please enter a name for every group")
         else:
             combined_data = pd.concat(dataframes, ignore_index=True)
+            all_features = [x for x in combined_data.columns if x not in
+                            ['group', 'group_index', 'filename', 'CellID']]
             # Calculate separation scores for all groups at once
-            sep = cellphe.separation.calculate_separation_scores(dataframes)
+            sep = cellphe.separation.calculate_separation_scores([x[all_features] for x in dataframes])
 
             # Sort the separation scores in descending order by the 'Separation' column
             sep_sorted = sep.sort_values(by="Separation", ascending=False)
@@ -668,11 +781,10 @@ with tab3:
             # Get the top n separation scores for display and analysis
             top_sep_df = sep_sorted.head(n)
             train_features = top_sep_df["Feature"]
-            all_features = combined_data.columns
 
             # Display PCA and separation scores side by side
-            plot_sep_and_pca_side_by_side(
-                top_sep_df, train_features, combined_data, labels
+            dim_red_df = plot_sep_and_pca_side_by_side(
+                top_sep_df, train_features, combined_data
             )
 
             # Dropdown to select feature for the boxplot
@@ -685,9 +797,15 @@ with tab3:
                     "Select Feature for Boxplot", all_features
                 )
             with col2:
-                plot_boxplot_with_points(combined_data, selected_feature, labels)
+                plot_boxplot_with_points(combined_data, selected_feature,
+                                         'group')
 
+            st.markdown("## Download outputs")
+            download_multiple_populations_output(
+                combined_data, sep_sorted,dim_red_df
+            )
             st.divider()
+
             st.markdown("# Classification of new cells")
             st.write(
                 "Upload a test dataset for classification to see how the cells compare to the training data. This must have the same columns as the training data."
@@ -707,7 +825,7 @@ with tab3:
                     # Use n directly for the number of features for classification
                     # Select top n features from each dataframe for training
                     train_x = combined_data[train_features]
-                    train_y = np.array(labels)
+                    train_y = combined_data['group']
 
                     # Remove rows with NaN values from the training data
                     train_x = train_x.dropna()
@@ -732,6 +850,12 @@ with tab3:
                         startangle=90,
                     )
                     st.pyplot(plt.gcf())
+                    st.download_button(
+                        label="Download test set predictions",
+                        data=test_df.to_csv(index=False).encode('utf-8'),
+                        file_name=f"cellphe_classification_predictions_{time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime())}",
+                        mime="text/csv",
+                    )
 
                     st.write(
                         "Use the dropdown below to investigate the differences in the features between the predicted classes for the test set."
@@ -744,7 +868,7 @@ with tab3:
                     with col2:
                         st.write("Boxplot for Selected Feature:")
                         plot_boxplot_with_points(
-                            test_df, selected_feature_test, test_df["Predicted"]
+                            test_df, selected_feature_test, 'Predicted'
                         )
     else:
         st.warning("Please upload a valid CSV for every group.")
