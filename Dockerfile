@@ -11,10 +11,9 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt ./
+# Install CPU only torch
+RUN pip install --no-compile --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-compile --no-cache-dir --user -r requirements.txt
-
-# Remove CUDA packages to save several GB - means can only use CPU
-RUN pip uninstall -y nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12 nvidia-nccl-cu12 nvidia-nvtx-cu12 triton
 
 # Application image
 FROM python:3.12-slim AS app
