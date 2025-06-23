@@ -601,7 +601,10 @@ with tab1:
 with tab2:
     st.markdown("# Single Population Temporal Characterisation")
     st.markdown(
-        "Analysis a single population's temporal characteristics, as obtained by the `cell_features()` function."
+        """Analyse a single population's temporal characteristics, contained
+        within the `frame_features.csv` output from the Image Processing tab or
+        obtained from the `cell_features()` function in CellPhePy.
+        """
     )
 
     # Allow user to upload a CSV file containing cell features
@@ -709,8 +712,10 @@ with tab3:
     st.markdown("# PCA and Separation Scores")
     st.markdown(
         """Select the number of groups you want to analyze. They will be
-                compared on their time-series features (as output by the
-                `time_series_features` function in CellPhe)."""
+        compared on their time-series features (contained in
+        `time_series_features.csv` from the Image Processing tab or
+        alternatively output by the `time_series_features` function in CellPhePy).
+        """
     )
 
     # Allow user to select the number of groups
