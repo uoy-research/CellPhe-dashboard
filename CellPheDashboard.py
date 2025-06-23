@@ -621,6 +621,20 @@ with tab2:
                 "Upload a feature set of the cells on each frame as output by the cell_features() function in CellPhe."
             )
         else:
+            # Plot map of cell movement
+            sns.lineplot(
+                new_features_df,
+                x="x",
+                y="y",
+                size="CellID",
+                sizes=(1, 1),
+                legend=False
+            )
+            plt.xlabel("X (pixels)")
+            plt.ylabel("Y (pixels)")
+            plt.title("Cell positions over timelapse duration")
+            st.pyplot(plt.gcf())
+
             # Dropdown for CellID
             col1, col2 = st.columns(2)
             with col1:
@@ -637,6 +651,7 @@ with tab2:
                         if col not in EXCLUDE_ANALYSIS_COLUMNS
                     ],
                 )
+
             # Filter the dataframe based on the selected CellID
             # Plot time-series and densities
             col1, col2 = st.columns(2, vertical_alignment="center")
