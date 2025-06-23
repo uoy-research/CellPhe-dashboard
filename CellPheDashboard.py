@@ -601,7 +601,10 @@ with tab1:
 with tab2:
     st.markdown("# Single Population Temporal Characterisation")
     st.markdown(
-        "Analysis a single population's temporal characteristics, as obtained by the `cell_features()` function."
+        """Analyse a single population's temporal characteristics, contained
+        within the `frame_features.csv` output from the Image Processing tab or
+        obtained from the `cell_features()` function in CellPhePy.
+        """
     )
 
     # Allow user to upload a CSV file containing cell features
@@ -621,11 +624,25 @@ with tab2:
                 "Upload a feature set of the cells on each frame as output by the cell_features() function in CellPhe."
             )
         else:
+            # Plot map of cell movement
+            sns.lineplot(
+                new_features_df,
+                x="x",
+                y="y",
+                size="CellID",
+                sizes=(1, 1),
+                legend=False
+            )
+            plt.xlabel("X (pixels)")
+            plt.ylabel("Y (pixels)")
+            plt.title("Cell positions over timelapse duration")
+            st.pyplot(plt.gcf())
+
             # Dropdown for CellID
             col1, col2 = st.columns(2)
             with col1:
                 cell_id = st.selectbox(
-                    "Select CellID", new_features_df["CellID"].unique()
+                    "Select Cell", new_features_df["CellID"].unique()
                 )
             with col2:
                 # Exclude 'FrameID' and 'roi_filename' from the dropdown
@@ -637,6 +654,7 @@ with tab2:
                         if col not in EXCLUDE_ANALYSIS_COLUMNS
                     ],
                 )
+
             # Filter the dataframe based on the selected CellID
             # Plot time-series and densities
             col1, col2 = st.columns(2, vertical_alignment="center")
@@ -648,7 +666,7 @@ with tab2:
                     cell_data["FrameID"], cell_data[selected_feature], linewidth=3
                 )
                 plt.title(
-                    f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
+                    f"Time Series of {selected_feature} for Cell {cell_data['CellID'].values[0]}"
                 )
                 plt.grid(False)  # Remove the grid
                 st.pyplot(plt.gcf())
@@ -694,8 +712,10 @@ with tab3:
     st.markdown("# PCA and Separation Scores")
     st.markdown(
         """Select the number of groups you want to analyze. They will be
-                compared on their time-series features (as output by the
-                `time_series_features` function in CellPhe)."""
+        compared on their time-series features (contained in
+        `time_series_features.csv` from the Image Processing tab or
+        alternatively output by the `time_series_features` function in CellPhePy).
+        """
     )
 
     # Allow user to select the number of groups
