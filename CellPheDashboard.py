@@ -639,7 +639,7 @@ with tab2:
             col1, col2 = st.columns(2)
             with col1:
                 cell_id = st.selectbox(
-                    "Select CellID", new_features_df["CellID"].unique()
+                    "Select Cell", new_features_df["CellID"].unique()
                 )
             with col2:
                 # Exclude 'FrameID' and 'roi_filename' from the dropdown
@@ -663,7 +663,7 @@ with tab2:
                     cell_data["FrameID"], cell_data[selected_feature], linewidth=3
                 )
                 plt.title(
-                    f"Time Series of {selected_feature} for CellID {cell_data['CellID'].values[0]}"
+                    f"Time Series of {selected_feature} for Cell {cell_data['CellID'].values[0]}"
                 )
                 plt.grid(False)  # Remove the grid
                 st.pyplot(plt.gcf())
