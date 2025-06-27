@@ -2,6 +2,7 @@ import time
 import os
 from pathlib import Path
 import shutil
+import uuid
 import warnings
 
 from cellphe import (
@@ -134,6 +135,7 @@ def assign_color(feature, colour_mapping):
 
 def process_images(
     raw_images,
+    output_dir,
     framerate=0.0028,
     min_frames=0,
     keep_masks=False,
@@ -156,8 +158,8 @@ def process_images(
     - tsvariables: DataFrame, extracted time series features (if applicable)
     """
     # Step 1: Define paths
-    out_dir = "outputs"
-    image_folder = "images"
+    out_dir = os.path.join(output_dir, "outputs")
+    image_folder = os.path.join(output_dir, "images")
     masks_folder = os.path.join(out_dir, "masks")
     rois_archive = os.path.join(out_dir, "rois.zip")
     trackmate_csv = os.path.join(out_dir, "trackmate.csv")
@@ -273,7 +275,7 @@ def process_images(
     if keep_cellphe_frame_features:
         frame_features.to_csv(frame_features_csv, index=False)
 
-    shutil.make_archive("outputs", "zip", "outputs")
+    shutil.make_archive("outputs", "zip", out_dir)
 
     return tsvariables
 
@@ -513,10 +515,18 @@ with tab1:
                 """
     )
     st.markdown("## Upload raw images")
+
+    if "output_dir" not in st.session_state:
+        st.session_state.output_dir = ""
+
+    def new_folder():
+        st.session_state.output_dir = uuid.uuid4().hex
+
     raw_images = st.file_uploader(
         "Upload images",
         type=['tiff', 'tif', 'jpg', 'jpeg', 'TIFF', 'TIF', 'JPEG', 'JPG'],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        on_change=new_folder
      )
 
     # Button to start processing
@@ -572,6 +582,7 @@ with tab1:
             # Call the process_images function (Assuming it is defined elsewhere in your code)
             ts_variables = process_images(
                 raw_images,
+                output_dir=st.session_state.output_dir,
                 keep_masks=save_masks,
                 keep_rois=save_rois,
                 keep_trackmate_features=save_trackmate_features,
