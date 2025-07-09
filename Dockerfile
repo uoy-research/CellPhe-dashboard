@@ -46,8 +46,9 @@ COPY cellpose_models/ ./cellpose_models/
 RUN mkdir -p ~/.cellpose/models
 RUN wget https://www.cellpose.org/models/cyto3 -O ~/.cellpose/models/cyto3
 
-# Copy application code
+# Copy application code and config
 COPY CellPheDashboard.py .
+COPY .streamlit .streamlit
 
 EXPOSE 8501
 
