@@ -145,7 +145,8 @@ def process_images(
     cellpose_model='cyto3',
     uploaded_masks=None,
     uploaded_roi=None,
-    uploaded_trackmate_csv=None
+    uploaded_trackmate_csv=None,
+    max_heap=None
 ):
     """
     Process a folder of images to extract cell features and time series features.
@@ -219,7 +220,12 @@ def process_images(
     overall_bar.progress(0.4, text="Tracking")
     if not have_tracking:
         try:
-            track_images(masks_folder, trackmate_csv, rois_archive)
+            track_images(
+                masks_folder,
+                trackmate_csv,
+                rois_archive,
+                max_heap=max_heap,
+            )
         except Exception as e:
             st.write(f"An unexpected error occurred during tracking: {e}")
             overall_bar.empty()
@@ -553,6 +559,15 @@ with tab1:
                 max_value=len(raw_images),
                 value=min(len(raw_images), 20),
             )
+            max_heap = st.number_input(
+                """Memory to assign for Tracking (GB). Be very careful to not
+                assign more than your computer has!
+                """,
+                min_value=1,
+                max_value=16,
+                value=2,
+                step=1
+            )
             frame_rate = st.number_input(
                 "Time period between frames (only used to provide a meaningful unit for cell velocity)",
                 min_value=0.0,
@@ -592,7 +607,8 @@ with tab1:
                 cellpose_model=cellpose_model,
                 uploaded_masks=uploaded_masks,
                 uploaded_roi=uploaded_roi,
-                uploaded_trackmate_csv=uploaded_trackmate_csv
+                uploaded_trackmate_csv=uploaded_trackmate_csv,
+                max_heap=max_heap
             )
 
             if ts_variables is None or ts_variables.empty:
