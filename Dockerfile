@@ -4,15 +4,12 @@ FROM python:3.12-slim AS builder
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
-    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt ./
-# Install CPU only torch
-RUN pip install --no-compile --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-compile --no-cache-dir --user -r requirements.txt
 
 # Application image
@@ -25,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 # Install Maven
 ENV MAVEN_HOME=/opt/maven
 ENV PATH=$MAVEN_HOME/bin:$PATH
-ENV MAVEN_VERSION=3.9.10
+ENV MAVEN_VERSION=3.9.14
 RUN wget https://dlcdn.apache.org/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz -O /tmp/maven.tar.gz && \
     tar xvf /tmp/maven.tar.gz -C /opt && \
     mv /opt/apache-maven-$MAVEN_VERSION $MAVEN_HOME
