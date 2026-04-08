@@ -87,13 +87,17 @@ def segment_images_with_progress_bar(
     image_fns = sorted(os.listdir(image_folder))
     n_images = len(image_fns)
     segmenting_bar = st.progress(0, text=f"Image {0}/{n_images}")
+    n_cells = np.zeros(n_images)
     for i, fn in enumerate(image_fns):
         image = np.array(Image.open(os.path.join(image_folder, fn)))
-        masks = model.eval(image, **eval_params)[0]
+        masks = model.eval(image, **eval_params)[0].astype("uint16")
+        cell_ids = np.unique(masks)
+        n_cells[i] = cell_ids[cell_ids > 0].size
         segmenting_bar.progress((i+1)/n_images, text=f"Image {i+1}/{n_images}")
-        io.imsave(os.path.join(masks_folder, fn), masks.astype("uint16"))  # Assuming masks are uint16
+        io.imsave(os.path.join(masks_folder, fn), masks)
     time.sleep(2)
     segmenting_bar.empty()
+    return n_cells
 
 
 # Function to assign feature categories based on substrings in the feature names
@@ -210,7 +214,7 @@ def process_images(
                 else:
                     model_path = ''  # appease linter, code can't get here
                 cellpose_params = {'pretrained_model': model_path}
-            segment_images_with_progress_bar(
+            n_cells = segment_images_with_progress_bar(
                 image_folder,
                 masks_folder,
                 model_params=cellpose_params
@@ -224,6 +228,8 @@ def process_images(
     overall_bar.progress(0.4, text="Tracking")
     if not have_tracking:
         try:
+            if n_cells.sum() == 0:
+                raise RuntimeError("No cells identified, try a different segmentation model.")
             track_images(
                 masks_folder,
                 trackmate_csv,
