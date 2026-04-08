@@ -201,8 +201,12 @@ def process_images(
             else:
                 if cellpose_model == 'ioLight':
                     model_path = "cellpose_models/CP_20250421_ioLight_21imgs"
+                elif cellpose_model == 'LiveCyte Phase':
+                    model_path = "cellpose_models/CP_20250708LivecytePhase_27imgs"
                 elif cellpose_model == 'LiveCyte Brightfield':
                     model_path = "cellpose_models/CP_20250502_Livcyto_25imgs"
+                elif cellpose_model == 'OpenFlexure':
+                    model_path = "cellpose_models/CP_OFM_20260114"
                 else:
                     model_path = ''  # appease linter, code can't get here
                 cellpose_params = {'pretrained_model': model_path}
@@ -261,7 +265,7 @@ def process_images(
     try:
         tsvariables = time_series_features(frame_features)
     except:
-        st.write("An error occured while extracting the temporal features, NB: generally at least 20 frames are needed for robust calculation")
+        st.write("An error occured while extracting the temporal features, NB: generally at least 10 frames are needed for robust calculation")
         overall_bar.empty()
         return
 
@@ -549,15 +553,15 @@ with tab1:
         with col2:
             cellpose_model = st.selectbox(
                 "Choose a cellpose segmentation model",
-                ("cyto3", "ioLight", "LiveCyte Brightfield"),
+                ("cyto3", "LiveCyte Phase", "ioLight", "LiveCyte Brightfield", "OpenFlexure"),
             )
-            # Ideally would have 20 frames per cell minimum, otherwise time-series
+            # Ideally would have 10 frames per cell minimum, otherwise time-series
             # features struggle to estimate
             min_frames = st.number_input(
                 "Minimum number of frames a cell must be in to be kept",
                 min_value=0,
                 max_value=len(raw_images),
-                value=min(len(raw_images), 20),
+                value=min(len(raw_images), 10),
             )
             max_heap = st.number_input(
                 """Memory to assign for Tracking (GB). Be very careful to not
