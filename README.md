@@ -20,11 +20,12 @@ Simply download the Docker image from this repository:
 
 Then run it:
 
-`docker run -p 8501:8501 ghcr.io/uoy-research/cellphe-dashboard:main`
+`docker run --rm -p 8501:8501 ghcr.io/uoy-research/cellphe-dashboard:main`
 
 ## Running from source
 
 The app can be run without Docker, although it will require setting up a suitable Python environment.
+**NB: Currently Python 3.12 is the supported version, other versions may require tweaking of the dependencies**.
 
 Firstly, clone this repository:
 
