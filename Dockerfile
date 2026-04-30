@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 # Install Maven
 ENV MAVEN_HOME=/opt/maven
 ENV PATH=$MAVEN_HOME/bin:$PATH
-ENV MAVEN_VERSION=3.9.14
+ENV MAVEN_VERSION=3.9.15
 RUN wget https://dlcdn.apache.org/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz -O /tmp/maven.tar.gz && \
     tar xvf /tmp/maven.tar.gz -C /opt && \
     mv /opt/apache-maven-$MAVEN_VERSION $MAVEN_HOME

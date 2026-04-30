@@ -71,3 +71,40 @@ Then you can run the app although NB: the first time tracking is run it will tak
 ```bash
 streamlit run CellPheDashboard.py --server.port=8501 --server.address=0.0.0.0
 ```
+
+## Windows issues
+
+Windows users might encounter some additional OS-specific issues.
+This section aims to document some of these in order to remove any barriers to use.
+
+### Installing Docker
+
+As mentioned above, running the dashboard through Docker involves installing the fewest dependencies, however, installing Docker itself on Windows is not as straightforward as it is on other OSes.
+The easiest way to install Docker on Windows is through the [Docker Desktop](https://www.docker.com/products/docker-desktop/) GUI, however, the [licence agreement](https://docs.docker.com/subscription/desktop-license/) requires a paid subscription for users in organisations with > 250 employees or > $10million in annual revenue.
+An alternative is to use [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install) although this requires setting up WSL itself and using a potentially unfamiliar Linux environment.
+The final possible hurdle with Docker that due to it requiring elevated access it might not be permitted by your organization's IT security policy, in which case running the dashboard from the Python source might be the only option.
+
+### Installing Python
+
+Unlike MacOS or Linux, Python doesn't come installed with Windows by default.
+The best way to install Python is from the [official website](https://www.python.org/downloads/windows/), with the following considerations:
+
+  - CellPhe isn't compatible with Python 3.14 - we'd recommend either 3.12 or 3.13
+  - Check the box for adding Python to `PATH` during the install process
+  - It's a good idea to also install the separate Install Manager from the same website to allow for [quicker switching between Python versions](https://docs.python.org/3/using/windows.html#installing-runtimes) in future
+
+### Visual C++ Build Tools
+
+If you come across an error message like the below when installing CellPhe (or other Python packages), the solution is to install C++ Build Tools from the [Microsoft website](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (tick 'Desktop development with C++').
+
+```python
+  WARNING: Failed to activate VS environment: Could not find C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe
+
+      ..\meson.build:1:0: ERROR: Unknown compiler(s): [['icl'], ['cl'], ['cc'], ['gcc'], ['clang'], ['clang-cl'], ['pgcc']]
+```
+
+### Pip not found
+
+If you get an error when running `pip install cellphe` about `pip` not being found ("'pip' is not recognized as an internal or external command" or similar), try running `python -m pip install cellphe` instead.
+This is because `pip` isn't always added to the `PATH` in Windows.
+
